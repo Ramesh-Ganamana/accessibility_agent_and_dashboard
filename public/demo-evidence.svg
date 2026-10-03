@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="1200" height="700" fill="#f4f1ea"/>
+  <rect x="0" y="0" width="1200" height="86" fill="#fff"/>
+  <rect x="54" y="26" width="128" height="32" rx="8" fill="#18231d"/>
+  <circle cx="75" cy="42" r="8" fill="#c9ff4b"/>
+  <rect x="222" y="34" width="64" height="14" rx="7" fill="#c9cec7"/>
+  <rect x="308" y="34" width="72" height="14" rx="7" fill="#c9cec7"/>
+  <rect x="954" y="24" width="190" height="40" rx="20" fill="#edf0ea"/>
+  <rect x="56" y="142" width="500" height="40" rx="8" fill="#1e2c24"/>
+  <rect x="56" y="203" width="630" height="18" rx="9" fill="#a7afa9"/>
+  <rect x="56" y="237" width="530" height="18" rx="9" fill="#c4c9c5"/>
+  <rect x="56" y="302" width="338" height="286" rx="18" fill="#fff"/>
+  <rect x="82" y="330" width="286" height="154" rx="12" fill="#dde6df"/>
+  <circle cx="225" cy="407" r="45" fill="#b6c9ba"/>
+  <rect x="82" y="515" width="158" height="20" rx="8" fill="#26372d"/>
+  <rect x="82" y="551" width="246" height="14" rx="7" fill="#c1c8c2"/>
+  <rect x="430" y="302" width="338" height="286" rx="18" fill="#fff"/>
+  <rect x="456" y="330" width="286" height="154" rx="12" fill="#f2daca"/>
+  <path d="M550 451c25-70 55-108 96-112 25 14 51 51 76 112z" fill="#cb8d67" opacity=".7"/>
+  <rect x="456" y="515" width="188" height="20" rx="8" fill="#26372d"/>
+  <rect x="456" y="551" width="246" height="14" rx="7" fill="#c1c8c2"/>
+  <rect x="804" y="302" width="338" height="286" rx="18" fill="#fff"/>
+  <rect x="830" y="330" width="286" height="154" rx="12" fill="#e3ddf1"/>
+  <rect x="830" y="515" width="172" height="20" rx="8" fill="#26372d"/>
+  <rect x="830" y="551" width="246" height="14" rx="7" fill="#c1c8c2"/>
+  <rect x="446" y="320" width="306" height="174" rx="16" fill="none" stroke="#ff3158" stroke-width="7"/>
+  <rect x="446" y="270" width="365" height="42" rx="8" fill="#c9183c"/>
+  <text x="463" y="297" fill="white" font-family="Arial, sans-serif" font-weight="700" font-size="18">WCAG 1.1.1 · Image alternative is missing</text>
+</svg>

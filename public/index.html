@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Accessibility automation dashboard with evidence screenshots, crawl graph, and VPAT export.">
+  <title>RAMBO — Accessibility Automation Agent</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to report</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Clarity home">
+      <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+      <span><strong>RAMBO</strong><small>Accessibility agent</small></span>
+    </a>
+    <div class="topbar-actions">
+      <span class="engine-state"><span class="pulse"></span> Engine ready</span>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle color theme">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Web accessibility intelligence</p>
+        <h1 id="page-title">See every barrier.<br><em>Trace every path.</em></h1>
+        <p>Deterministic WCAG scanning with targeted AI review, visual evidence, and audit-ready VPAT outputs.</p>
+      </div>
+      <form class="scan-card" id="scan-form">
+        <div class="scan-card-heading">
+          <div>
+            <span class="overline">New audit</span>
+            <h2>Scan an application</h2>
+          </div>
+          <span class="cost-pill">Local first</span>
+        </div>
+        <label for="target-url">Application URL</label>
+        <div class="url-control">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+          <input id="target-url" name="targetUrl" type="url" required placeholder="https://app.example.com">
+          <button type="submit">Start scan <svg class="button-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9m-3-3 3 3-3 3"/></svg></button>
+        </div>
+        <div class="scan-options">
+          <label title="Maximum total page and interaction states to inspect">State limit <input name="maxPages" type="number" min="1" max="100" value="10"></label>
+          <label title="Maximum chain of navigation and clickable actions from the starting state">Depth <input name="maxDepth" type="number" min="0" max="8" value="2"></label>
+          <label class="toggle"><input name="aiEnabled" type="checkbox"><span></span> Conditional vision AI</label>
+        </div>
+        <label class="action-exclusions" for="exclude-action-labels">Do not click in this application <small>(optional; exact labels separated by commas, applied only to the Application URL origin)</small><input id="exclude-action-labels" name="excludeActionLabels" type="text" autocomplete="off" placeholder="Example: External provider, Promotional banner"></label>
+        <div class="auth-box">
+          <label class="auth-toggle" for="auth-enabled">
+            <span><strong>Website requires login</strong><small>Use credentials only for this local scan</small></span>
+            <span class="toggle"><input id="auth-enabled" name="authEnabled" type="checkbox"><span></span></span>
+          </label>
+          <div class="auth-fields" id="auth-fields" hidden>
+            <label class="auth-wide">Application or login-entry URL<input id="login-url" name="loginUrl" type="url" autocomplete="url" placeholder="https://app.example.com or /login"></label>
+            <label>Username or email<input id="login-username" name="loginUsername" type="text" autocomplete="username" placeholder="name@example.com"></label>
+            <label>Password<input id="login-password" name="loginPassword" type="password" autocomplete="current-password" placeholder="••••••••"></label>
+            <label class="auth-wide">Domain / tenant / workspace <small>(optional)</small><input name="postLoginValue" type="text" autocomplete="off" placeholder="For example: JCB"></label>
+            <label class="remember-session"><input name="persistSession" type="checkbox" checked> Remember the authenticated session on this computer</label>
+            <label class="remember-session ai-auth-option"><input id="auth-ai-enabled" name="authAiEnabled" type="checkbox"> AI-assisted fallback for unfamiliar login forms <small id="auth-ai-status">Checking API availability…</small></label>
+            <details class="auth-advanced auth-wide">
+              <summary>Advanced login selectors</summary>
+              <div>
+                <label>Username selector<input name="emailSelector" type="text" placeholder='#signInName, input[name="username"]'></label>
+                <label>Password selector<input name="passwordSelector" type="text" placeholder='input[type="password"]'></label>
+                <label>Submit selector<input name="submitSelector" type="text" placeholder='#continue, #signIn, button[type="submit"]'></label>
+              </div>
+            </details>
+            <p class="credential-note auth-wide"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Passwords, input values, cookies, and tokens remain local. When Conditional Vision AI is enabled, sanitized control metadata and numbered screenshots may be sent for login or stalled-crawl navigation. Saved sessions contain cookies and must also be protected.</p>
+          </div>
+        </div>
+        <div class="job-progress" id="job-progress" role="status" aria-live="polite" aria-atomic="false" tabindex="-1" hidden>
+          <div class="job-status-heading">
+            <span class="job-status-icon" id="job-status-icon" aria-hidden="true">●</span>
+            <div><span class="job-status-label" id="job-status-label">Starting</span><strong id="job-message">Preparing browser…</strong></div>
+            <strong id="job-percent">0%</strong>
+          </div>
+          <p class="job-detail" id="job-detail">The scan is being prepared.</p>
+          <progress id="job-progressbar" max="100" value="0">0%</progress>
+          <ol class="job-event-list" id="job-event-list" aria-label="Latest scan steps"></ol>
+        </div>
+        <p class="form-note" id="scan-note">Crawls safe links, controls, dialogs, popups, frames, and open Shadow DOM. After 50 seconds without progress, Conditional Vision AI can use a numbered-element fallback.</p>
+      </form>
+    </section>
+
+    <section class="report-shell" id="report-shell" aria-labelledby="report-title">
+      <div class="report-heading">
+        <div>
+          <div class="report-kicker"><span id="report-state-dot"></span><span id="report-domain">Demo audit</span></div>
+          <h2 id="report-title">Accessibility report</h2>
+          <p id="report-date">Interactive sample · run a scan to replace it with live results</p>
+        </div>
+        <div class="report-actions">
+          <select id="report-current" aria-label="Report to view"><option value="">Saved reports</option></select>
+          <button class="button secondary" id="open-comparison" type="button">Compare reports</button>
+          <a class="button secondary" id="json-export" href="#">JSON</a>
+          <a class="button primary" id="csv-export" href="#">Export ACR</a>
+        </div>
+      </div>
+
+      <section class="health-stage" aria-labelledby="health-title">
+        <div class="health-score-card">
+          <span class="health-kicker">Accessibility health</span>
+          <div class="health-ring" id="health-ring" role="img" aria-label="Observed accessibility score unavailable"><div><strong id="health-score-value">—</strong><span>/ 10</span></div></div>
+          <span class="health-grade" id="health-grade">Awaiting scan</span>
+        </div>
+        <div class="health-story">
+          <span class="health-kicker">Your audit, at a glance</span>
+          <h3 id="health-title">A clearer picture of accessibility.</h3>
+          <p id="health-explainer">Run a scan to see a provisional score based on confirmed findings, with review items and coverage shown separately.</p>
+          <div class="health-facts">
+            <span><strong id="health-states">—</strong> states observed</span>
+            <span><strong id="health-confidence">—</strong> confidence</span>
+            <span><strong id="health-review">—</strong> need review</span>
+          </div>
+          <details class="health-method"><summary>How is this score calculated?</summary><p id="health-method-text">A heuristic for observed scan results, not a WCAG conformance score.</p></details>
+        </div>
+        <div class="health-principles" aria-label="Accessibility principle scores">
+          <div class="health-principles-title"><span class="health-kicker">Four principles</span><strong>Where to focus next</strong></div>
+          <div id="health-principle-list"></div>
+        </div>
+      </section>
+
+      <div class="metrics" role="region" aria-label="Scan summary">
+        <article><span class="metric-icon plum" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 7v6m0 4h.01"/></svg></span><div><strong id="metric-issues">12</strong><span>Confirmed issues</span></div><small id="metric-trend">Across 5 pages</small></article>
+        <article><span class="metric-icon coral" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9.5 9a2.6 2.6 0 1 1 4 2.2c-1 .65-1.5 1.2-1.5 2.3m0 3.5h.01"/></svg></span><div><strong id="metric-review">6</strong><span>Needs review</span></div><small>Uncertain findings</small></article>
+        <article><span class="metric-icon green" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m7 12 3 3 7-7"/></svg></span><div><strong id="metric-evidence">10</strong><span>Evidence captures</span></div><small>Issue-highlighted</small></article>
+        <article><span class="metric-icon blue" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></span><div><strong id="metric-duration">18s</strong><span>Audit duration</span></div><small id="metric-ai">0 AI escalations</small></article>
+      </div>
+
+      <div class="tabs" role="tablist" aria-label="Report views">
+        <button role="tab" aria-selected="true" aria-controls="panel-overview" id="tab-overview" data-tab="overview">Overview</button>
+        <button role="tab" aria-selected="false" aria-controls="panel-issues" id="tab-issues" data-tab="issues">Issues <span id="issue-tab-count">12</span></button>
+        <button role="tab" aria-selected="false" aria-controls="panel-crawl" id="tab-crawl" data-tab="crawl">Crawl graph</button>
+        <button role="tab" aria-selected="false" aria-controls="panel-vpat" id="tab-vpat" data-tab="vpat">VPAT / ACR</button>
+      </div>
+
+      <section class="tab-panel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
+        <div class="overview-grid">
+          <article class="panel severity-panel">
+            <div class="panel-heading"><div><span class="overline">Risk profile</span><h3>Issue severity</h3></div><span class="mini-note">Confirmed only</span></div>
+            <div class="severity-visual">
+              <div class="donut" id="severity-donut"><div><strong id="donut-total">12</strong><span>issues</span></div></div>
+              <ul id="severity-legend"></ul>
+            </div>
+          </article>
+          <article class="panel coverage-panel">
+            <div class="panel-heading"><div><span class="overline">Coverage</span><h3>Application surfaces</h3></div></div>
+            <div class="coverage-bars" id="coverage-bars"></div>
+          </article>
+          <article class="panel activity-panel">
+            <div class="panel-heading"><div><span class="overline">Scan log</span><h3>What the agent inspected</h3></div></div>
+            <ol class="activity-list" id="activity-list"></ol>
+          </article>
+        </div>
+      </section>
+
+      <section class="tab-panel issue-layout" role="tabpanel" id="panel-issues" aria-labelledby="tab-issues" hidden>
+        <div class="issue-column">
+          <div class="issue-toolbar">
+            <div class="search-control">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 4 4"/></svg>
+              <input id="issue-search" type="search" placeholder="Filter by rule, page, or selector" aria-label="Filter issues">
+            </div>
+            <select id="impact-filter" aria-label="Filter by impact"><option value="all">All impacts</option><option value="critical">Critical</option><option value="serious">Serious</option><option value="moderate">Moderate</option><option value="minor">Minor</option></select>
+            <select id="finding-status-filter" aria-label="Filter by review status"><option value="all">Confirmed + needs review</option><option value="confirmed">Confirmed only</option><option value="needs-review">Needs review only</option></select>
+          </div>
+          <div class="issue-list" id="issue-list"></div>
+        </div>
+        <aside class="evidence-panel" aria-live="polite">
+          <div class="evidence-heading">
+            <div><span class="overline">Visual evidence</span><h3 id="evidence-title">Select a finding</h3></div>
+            <span class="impact-badge" id="evidence-impact">—</span>
+          </div>
+          <div class="screenshot-frame" id="screenshot-frame">
+            <div class="browser-chrome"><i></i><i></i><i></i><span id="evidence-url">about:blank</span></div>
+            <img id="evidence-image" src="/demo-evidence.svg" alt="Page screenshot with the accessibility issue outlined and labeled">
+            <p class="evidence-caption" id="evidence-caption" hidden></p>
+          </div>
+          <dl class="evidence-meta">
+            <div><dt>WCAG</dt><dd id="evidence-wcag">—</dd></div>
+            <div><dt>State</dt><dd id="evidence-state">—</dd></div>
+            <div><dt>Source</dt><dd id="evidence-source">—</dd></div>
+            <div><dt>Review status</dt><dd id="evidence-review-status">—</dd></div>
+          </dl>
+          <div class="technical-detail"><span>DOM target</span><code id="evidence-target">—</code></div>
+          <div class="technical-detail"><span>Why it matters</span><p id="evidence-summary">Choose an issue to inspect its screenshot and technical context.</p></div>
+          <div class="technical-detail" id="review-history-block" hidden><span>Review history</span><ol class="review-history" id="review-history"></ol></div>
+        </aside>
+      </section>
+
+      <section class="tab-panel" role="tabpanel" id="panel-crawl" aria-labelledby="tab-crawl" hidden>
+        <div class="crawl-toolbar">
+          <div><span class="overline">Application map</span><h3>Interactive crawl graph</h3><p>Each node is an observed application state. Arrow labels show the recorded navigation, popup, or dialog action. Select a node to inspect its findings.</p></div>
+          <div class="graph-legend"><span><i class="node-dot pass"></i> Scanned</span><span><i class="node-dot failed"></i> Failed</span><span><i class="edge-line popup"></i> Popup</span></div>
+        </div>
+        <div class="graph-wrap">
+          <svg id="crawl-graph" role="img" aria-label="Graph of observed application states and action transitions"></svg>
+          <div class="graph-detail" id="graph-detail"><span>Select a page</span><strong>Explore its route and findings</strong></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" role="tabpanel" id="panel-vpat" aria-labelledby="tab-vpat" hidden>
+        <div class="vpat-heading"><div><span class="overline">Conformance matrix</span><h3>VPAT / ACR draft</h3><p>Machine-generated language for legal and accessibility review.</p></div><a class="button primary" id="csv-export-secondary" href="#">Download CSV</a></div>
+        <div class="table-wrap"><table><thead><tr><th>Success criterion</th><th>Level</th><th>Conformance</th><th>Issues</th><th>Remarks</th></tr></thead><tbody id="vpat-body"></tbody></table></div>
+      </section>
+    </section>
+
+    <section class="comparison-shell" id="comparison-shell" aria-labelledby="comparison-page-title" hidden>
+      <div class="comparison-page-heading">
+        <div><span class="overline">Separate analysis workspace</span><h2 id="comparison-page-title">Compare two reports</h2><p>Choose any two scans. Their earlier/later order is determined when you compare.</p></div>
+        <button class="button secondary" id="back-to-report" type="button">Back to report</button>
+      </div>
+      <form class="comparison-form" id="comparison-form">
+        <label>First report<select id="compare-before" required><option value="">Choose first report</option></select></label>
+        <label>Second report<select id="compare-after" required><option value="">Choose second report</option></select></label>
+        <button class="button primary" id="compare-run" type="submit">Compare</button>
+        <button class="button secondary" id="compare-reset" type="button" title="Clear the selected reports and comparison result; saved reports are not deleted.">Reset comparison</button>
+      </form>
+      <p class="comparison-form-hint" id="comparison-form-hint">Choose two different completed reports from the same application, in either order.</p>
+      <p class="comparison-toast" id="comparison-toast" role="alert" hidden></p>
+      <section class="comparison-module" id="comparison-module" aria-labelledby="comparison-title" hidden>
+        <div class="comparison-heading">
+          <div><span class="overline">Report comparison</span><h3 id="comparison-title">What changed between scans</h3><p id="comparison-dates"></p></div>
+          <div class="comparison-filters" role="group" aria-label="Filter comparison results">
+            <button type="button" data-comparison-filter="all" aria-pressed="true">All <strong id="comparison-all-count">0</strong></button>
+            <button type="button" data-comparison-filter="new" aria-pressed="false">New <strong id="comparison-new-count">0</strong></button>
+            <button type="button" data-comparison-filter="fixed" aria-pressed="false">Fixed <strong id="comparison-fixed-count">0</strong></button>
+            <button type="button" data-comparison-filter="unresolved" aria-pressed="false">Unresolved <strong id="comparison-unresolved-count">0</strong></button>
+          </div>
+        </div>
+        <div class="comparison-badges" aria-label="Comparison totals">
+          <span class="delta-badge delta-new">🔴 New issues produced <strong id="comparison-new-badge">0</strong></span>
+          <span class="delta-badge delta-fixed">🟢 Issues rectified / fixed <strong id="comparison-fixed-badge">0</strong></span>
+          <span class="delta-badge delta-unresolved">⚠️ Unresolved issues <strong id="comparison-unresolved-badge">0</strong></span>
+        </div>
+        <div class="comparison-table-wrap">
+          <table class="comparison-table"><thead><tr><th>Change</th><th>WCAG / rule</th><th>Element path</th><th>Page / state</th></tr></thead><tbody id="comparison-table-body"></tbody></table>
+        </div>
+        <section class="comparison-evidence" id="comparison-evidence" aria-labelledby="comparison-evidence-title" hidden>
+          <div class="comparison-evidence-heading"><div><span class="overline">Visual evidence</span><h4 id="comparison-evidence-title">Select a finding</h4><p id="comparison-evidence-detail"></p></div><span id="comparison-evidence-status" class="delta-badge"></span></div>
+          <div class="comparison-evidence-grid">
+            <article class="comparison-evidence-card"><h5>Earlier scan</h5><p id="compare-before-evidence-date"></p><div id="compare-before-evidence-image"></div><p id="compare-before-evidence-note"></p></article>
+            <article class="comparison-evidence-card"><h5>Later scan</h5><p id="compare-after-evidence-date"></p><div id="compare-after-evidence-image"></div><p id="compare-after-evidence-note"></p></article>
+          </div>
+        </section>
+        <p class="comparison-caveat" id="comparison-caveat"></p>
+        <div class="comparison-graphs" aria-label="Separate crawl graphs for each report">
+          <article class="comparison-graph-card"><h4>Earlier scan crawl graph</h4><p id="compare-before-graph-summary"></p><div class="comparison-graph-wrap"><svg id="compare-before-graph" role="img" aria-label="Earlier scan crawl graph"></svg></div></article>
+          <article class="comparison-graph-card"><h4>Later scan crawl graph</h4><p id="compare-after-graph-summary"></p><div class="comparison-graph-wrap"><svg id="compare-after-graph" role="img" aria-label="Later scan crawl graph"></svg></div></article>
+        </div>
+      </section>
+    </section>
+  </main>
+  <footer><span>Clarity agent</span><p>Automated results require human validation before declaring conformance.</p></footer>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

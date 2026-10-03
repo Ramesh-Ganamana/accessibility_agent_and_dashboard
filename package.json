@@ -1,0 +1,40 @@
+{
+  "name": "ai-accessibility-automation-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cost-aware accessibility crawler with axe-core triage, conditional vision checks, evidence screenshots, crawl graph, and VPAT/ACR exports.",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "scan": "node src/cli.js",
+    "install:browsers": "playwright install chromium",
+    "test": "node --test",
+    "test:auth": "node scripts/verify-auth-flow.js",
+    "test:auth-ai": "node scripts/verify-ai-auth-flow.js",
+    "test:report-tabs": "node scripts/verify-report-tabs.js",
+    "test:report-comparison": "node scripts/verify-report-comparison.js",
+    "test:dashboard-score": "node scripts/verify-dashboard-score.js",
+    "test:crawl-actions": "node scripts/verify-crawl-actions.js",
+    "test:interaction-crawl": "node scripts/verify-interaction-crawl.js",
+    "test:action-login-gate": "node scripts/verify-action-login-gate.js",
+    "test:live-status": "node scripts/verify-live-status.js",
+    "test:ai-grounding": "node scripts/verify-ai-grounding.js",
+    "test:ai-grounding-crawl": "node scripts/verify-ai-grounding-crawl.js",
+    "test:post-login": "node scripts/verify-post-login-setup.js",
+    "test:navigation-race": "node scripts/verify-navigation-race.js",
+    "test:needs-review": "node scripts/verify-needs-review-evidence.js",
+    "test:protected-spa": "node scripts/verify-protected-spa-replay.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "axe-core": "^4.10.2",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "openai": "^4.86.1",
+    "playwright": "^1.51.1"
+  }
+}
