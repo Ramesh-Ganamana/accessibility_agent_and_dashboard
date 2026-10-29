@@ -1,0 +1,22 @@
+{
+  "name": "Example: sign in and open statements (sandbox)",
+  "description": "Template journey. Replace the URLs, labels and test-data keys with your approved sandbox application.",
+  "environment": "sandbox",
+  "startUrl": "https://sandbox.example.com/login",
+  "allowedOrigins": ["https://sandbox.example.com"],
+  "authorization": { "reference": "TEST-PLAN-0001", "approvedBy": "Application owner" },
+  "testData": "testdata/example-sandbox.json",
+  "useSavedSession": false,
+  "audit": { "profile": "financial", "wcagVersion": "2.2" },
+  "steps": [
+    { "action": "checkpoint", "name": "Login page" },
+    { "action": "fill", "target": { "label": "Email" }, "value": "{{email}}" },
+    { "action": "fill", "target": { "label": "Password" }, "value": "{{password}}" },
+    { "action": "click", "target": { "role": "button", "name": "Sign in" } },
+    { "action": "waitFor", "text": "Dashboard" },
+    { "action": "checkpoint", "name": "Dashboard" },
+    { "action": "click", "target": { "role": "link", "name": "Statements" } },
+    { "action": "assert", "text": "Statements" },
+    { "action": "checkpoint", "name": "Statements list" }
+  ]
+}

@@ -1,4 +1,7 @@
+// Every Playwright call on a closed page rejects at once and the waits below
+// swallow that, so without these checks a closed tab spins until the deadline.
 export async function waitForPageReady(page, options = {}) {
+  if (page.isClosed?.()) return false;
   const timeout = Number(options.timeout || 30_000);
   const settleMs = Number(options.settleMs || 900);
   const shellWaitMs = Number(options.shellWaitMs ?? timeout);
@@ -7,12 +10,16 @@ export async function waitForPageReady(page, options = {}) {
 
   await within(remaining(5_000), (time) => page.waitForLoadState("domcontentloaded", { timeout: time }));
   const visiblyReady = await waitForVisiblePage(page, remaining(timeout), shellWaitMs);
+  if (page.isClosed?.()) return false;
   if (!visiblyReady) await within(remaining(3_000), (time) => page.waitForLoadState("load", { timeout: time }));
-  await waitForDomQuiet(page, settleMs, Math.max(0, visiblyReady ? 8_000 : remaining(8_000)));
+  // A visibly usable page only needs a short structural settle. Continuous
+  // animation must not hold every click for the full cap.
+  await waitForDomQuiet(page, settleMs, Math.max(0, visiblyReady ? 3_000 : remaining(8_000)));
   return visiblyReady;
 }
 
 export async function navigateAndWait(page, url, options = {}) {
+  if (page.isClosed?.()) throw pageClosedError(url);
   const timeout = Number(options.timeout || 45_000);
   const deadline = Date.now() + timeout;
   let response = null;
@@ -22,6 +29,7 @@ export async function navigateAndWait(page, url, options = {}) {
   } catch (error) {
     navigationError = error;
   }
+  if (page.isClosed?.()) throw pageClosedError(url);
   if ((navigationError && /interrupted by another navigation/i.test(navigationError.message || "")) || isTransientAuthenticationUrl(page.url(), url)) {
     await waitForAuthenticationRedirectToSettle(page, url, Math.min(30_000, Math.max(0, deadline - Date.now())));
   }
@@ -30,12 +38,25 @@ export async function navigateAndWait(page, url, options = {}) {
     settleMs: Number(options.settleMs || 900),
     shellWaitMs: Number(options.shellWaitMs ?? Math.max(1, deadline - Date.now()))
   });
+  // Checked before the readiness verdict so a closed tab is never reported as a
+  // page that "did not render meaningful content".
+  if (page.isClosed?.()) throw pageClosedError(url);
   const usable = await page.evaluate(() => Boolean(document.documentElement && document.body)).catch(() => false);
   const transientAuthentication = isTransientAuthenticationUrl(page.url(), url);
-  if (navigationError && (!usable || page.url() === "about:blank" || transientAuthentication)) throw navigationError;
+  // Chromium's connection-error document has a body and can look "ready".
+  // Never audit browser error chrome as if it were the requested application.
+  const browserErrorDocument = /^(?:about:blank|chrome-error:|edge-error:|about:neterror)/i.test(page.url());
+  if (navigationError && (!usable || browserErrorDocument || transientAuthentication)) throw navigationError;
+  if (browserErrorDocument) throw new Error(`The browser could not open the application: ${url}`);
   if (transientAuthentication) throw new Error(`The authentication callback did not return to the requested application route: ${url}`);
   if (!ready) throw new Error(`The application did not render meaningful page content before the configured readiness timeout: ${url}`);
   return response;
+}
+
+function pageClosedError(url) {
+  const error = new Error(`The browser tab was closed before the page finished loading: ${url}`);
+  error.code = "PAGE_CLOSED";
+  return error;
 }
 
 export async function hasVisibleBusyState(page) {
@@ -109,6 +130,7 @@ async function waitForVisiblePage(page, timeout, shellWaitMs) {
   const shellDeadline = startedAt + Math.max(0, shellWaitMs);
   let emptyShellObserved = false;
   while (Date.now() < (emptyShellObserved ? Math.max(normalDeadline, shellDeadline) : normalDeadline)) {
+    if (page.isClosed?.()) return false;
     const state = await inspectVisualState(page);
     if (state.ready) return true;
     if (state.emptyApplicationShell) emptyShellObserved = true;
@@ -119,9 +141,13 @@ async function waitForVisiblePage(page, timeout, shellWaitMs) {
   return isPageVisiblyReady(page);
 }
 
+// Carousels, tickers, clocks, media players and live regions mutate forever.
+// Only structural changes outside them count as the page still rendering.
+const VOLATILE_MUTATION_SELECTOR = '[aria-live],[role="marquee"],[role="timer"],[role="log"],[role="status"],[role="alert"],[role="progressbar"],time,marquee,video,audio,canvas,svg,[class*="carousel" i],[class*="slider" i],[class*="swiper" i],[class*="slick" i],[class*="marquee" i],[class*="ticker" i],[class*="countdown" i],[class*="clock" i],[class*="spinner" i],[class*="skeleton" i],[class*="shimmer" i]';
+
 async function waitForDomQuiet(page, settleMs, timeout) {
   if (timeout <= 0) return;
-  await page.evaluate(({ settleMs, timeout }) => new Promise((resolve) => {
+  await page.evaluate(({ settleMs, timeout, volatileSelector }) => new Promise((resolve) => {
     let settledTimer;
     let timeoutTimer;
     let finished = false;
@@ -137,11 +163,21 @@ async function waitForDomQuiet(page, settleMs, timeout) {
       clearTimeout(settledTimer);
       settledTimer = setTimeout(finish, settleMs);
     };
-    const observer = new MutationObserver(reset);
-    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+    const volatile = (node) => {
+      const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+      try { return Boolean(element?.closest?.(volatileSelector)); } catch { return false; }
+    };
+    const observer = new MutationObserver((mutations) => {
+      if (mutations.some((mutation) => !volatile(mutation.target))) reset();
+    });
+    // Class/style churn is animation; visibility and busy flags are rendering.
+    observer.observe(document.documentElement, {
+      childList: true, subtree: true, characterData: true,
+      attributes: true, attributeFilter: ["hidden", "aria-busy", "aria-hidden", "disabled", "open"]
+    });
     timeoutTimer = setTimeout(finish, timeout);
     reset();
-  }), { settleMs, timeout }).catch(() => {});
+  }), { settleMs, timeout, volatileSelector: VOLATILE_MUTATION_SELECTOR }).catch(() => {});
 }
 
 async function within(timeout, operation) {
@@ -155,6 +191,8 @@ async function waitForAuthenticationRedirectToSettle(page, requestedUrl, timeout
   let stableUrl = page.url();
   let stableSince = Date.now();
   while (Date.now() < deadline) {
+    // page.url() keeps returning the cached URL after a close; stop looping on it.
+    if (page.isClosed?.()) return;
     const currentUrl = page.url();
     if (currentUrl !== stableUrl) {
       stableUrl = currentUrl;

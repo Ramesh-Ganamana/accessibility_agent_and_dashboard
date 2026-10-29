@@ -16,7 +16,9 @@ export function compareReports(current, previous) {
     error.status = 400;
     throw error;
   }
-  if (Date.parse(previous.startedAt) >= Date.parse(current.startedAt)) {
+  const previousStart = Date.parse(previous.startedAt);
+  const currentStart = Date.parse(current.startedAt);
+  if (!Number.isFinite(previousStart) || !Number.isFinite(currentStart) || previousStart >= currentStart) {
     const error = new Error("Choose a scan older than the current report.");
     error.status = 400;
     throw error;
@@ -40,14 +42,14 @@ export function compareReports(current, previous) {
     } else if (previousUncertain.has(finding.reviewKey)) {
       excludedForReview += 1;
     } else {
-      groups.new.push({ ...finding, previousEvidence: pageContextEvidence(previous, finding.page) });
+      groups.new.push({ ...finding, previousEvidence: pageContextEvidence(previous, finding.pageUrl) });
     }
   }
   for (const [key, finding] of previousFindings) {
     if (currentFindings.has(key)) continue;
     if (!currentCoverage.has(finding.surface)) excludedForCoverage += 1;
     else if (currentUncertain.has(finding.reviewKey)) excludedForReview += 1;
-    else groups.fixed.push({ ...finding, currentEvidence: pageContextEvidence(current, finding.page) });
+    else groups.fixed.push({ ...finding, currentEvidence: pageContextEvidence(current, finding.pageUrl) });
   }
   for (const entries of Object.values(groups)) entries.sort(sortFindings);
 
@@ -82,19 +84,29 @@ function comparisonGraph(report) {
 function indexFindings(report) {
   const findings = new Map();
   for (const issue of report.issues || []) {
-    const page = routeKey(issue.pageUrl || report.targetUrl);
-    const state = String(issue.state || "default").trim();
     const target = formatTarget(issue.target);
     const ruleId = String(issue.ruleId || "").trim();
-    for (const criterion of issue.wcag || []) {
-      if (!/^\d+\.\d+\.\d+$/.test(String(criterion))) continue;
-      const surface = surfaceKey(page, state);
-      const reviewKey = `${surface}\u0000${criterion}\u0000${ruleId}`;
-      const key = `${reviewKey}\u0000${target}`;
-      if (!findings.has(key)) findings.set(key, {
-        criterion, ruleId, help: issue.help || ruleId, target, page, state,
-        surface, reviewKey, evidence: evidenceReference(report.id, issue) || pageContextEvidence(report, page)
-      });
+    // A shared header/navigation finding is recorded once with the other pages
+    // listed; compare it on every page where it was observed.
+    const occurrences = [{ pageUrl: issue.pageUrl || report.targetUrl, state: issue.state }, ...(Array.isArray(issue.alsoObservedOn) ? issue.alsoObservedOn : [])];
+    for (const occurrence of occurrences) {
+      const pageUrl = occurrence.pageUrl || report.targetUrl;
+      const page = routeKey(pageUrl);
+      const state = String(occurrence.state || "default").trim();
+      // A main-frame finding's frame is the page it was observed on.
+      const mainFrame = !issue.frameUrl || locationKey(issue.frameUrl) === locationKey(issue.pageUrl || report.targetUrl);
+      const frameUrl = mainFrame ? pageUrl : issue.frameUrl;
+      for (const criterion of issue.wcag || []) {
+        if (!/^\d+\.\d+\.\d+$/.test(String(criterion))) continue;
+        const surface = surfaceKey(locationKey(pageUrl), state);
+        const frame = locationKey(frameUrl);
+        const reviewKey = `${surface}\u0000${frame}\u0000${criterion}\u0000${ruleId}`;
+        const key = `${reviewKey}\u0000${target}`;
+        if (!findings.has(key)) findings.set(key, {
+          criterion, ruleId, help: issue.help || ruleId, target, page, pageUrl, state,
+          surface, reviewKey, evidence: evidenceReference(report.id, issue) || pageContextEvidence(report, pageUrl)
+        });
+      }
     }
   }
   return findings;
@@ -110,8 +122,8 @@ function evidenceReference(reportId, issue) {
   };
 }
 
-function pageContextEvidence(report, route) {
-  const page = (report.pages || []).find((entry) => !entry.error && routeKey(entry.url) === route &&
+function pageContextEvidence(report, pageUrl) {
+  const page = (report.pages || []).find((entry) => !entry.error && samePageLocation(entry.url, pageUrl) &&
     (!entry.actualUrl || samePageLocation(entry.url, entry.actualUrl)) && entry.baseline);
   return page ? evidenceReference(report.id, { contextEvidence: page.baseline, evidenceKind: "page-context" }) : null;
 }
@@ -120,7 +132,7 @@ function samePageLocation(requested, actual) {
   try {
     const first = new URL(requested);
     const second = new URL(actual);
-    return first.hostname.toLowerCase() === second.hostname.toLowerCase() && routeKey(first.href) === routeKey(second.href);
+    return first.origin === second.origin && routeKey(first.href) === routeKey(second.href);
   } catch { return false; }
 }
 
@@ -128,7 +140,9 @@ function scannedSurfaces(report) {
   const surfaces = new Set();
   for (const page of report.pages || []) {
     if (page.error) continue;
-    const route = routeKey(page.url);
+    // Redirected authentication/error pages do not establish coverage of the requested route.
+    if (page.actualUrl && !samePageLocation(page.url, page.actualUrl)) continue;
+    const route = locationKey(page.url);
     surfaces.add(surfaceKey(route, "default"));
     for (const observed of page.observedStates || []) {
       const state = `${observed.state}:${String(observed.label || "").slice(0, 60)}`;
@@ -141,9 +155,11 @@ function scannedSurfaces(report) {
 function uncertainSurfaces(report) {
   const uncertain = new Set();
   for (const issue of report.incomplete || []) {
-    const surface = surfaceKey(routeKey(issue.pageUrl || report.targetUrl), issue.state || "default");
+    const pageUrl = issue.pageUrl || report.targetUrl;
+    const surface = surfaceKey(locationKey(pageUrl), issue.state || "default");
+    const frame = locationKey(issue.frameUrl || pageUrl);
     for (const criterion of issue.wcag || []) {
-      uncertain.add(`${surface}\u0000${criterion}\u0000${String(issue.ruleId || "").trim()}`);
+      uncertain.add(`${surface}\u0000${frame}\u0000${criterion}\u0000${String(issue.ruleId || "").trim()}`);
     }
   }
   return uncertain;
@@ -158,8 +174,14 @@ function surfaceKey(page, state) {
 function routeKey(value) {
   try {
     const url = new URL(value);
-    return `${url.pathname || "/"}${url.search}`;
+    const hashRoute = /^#(?:!\/|\/)/.test(url.hash) ? url.hash : "";
+    return `${url.pathname || "/"}${url.search}${hashRoute}`;
   } catch { return String(value || ""); }
+}
+
+function locationKey(value) {
+  try { return `${new URL(value).origin}${routeKey(value)}`; }
+  catch { return String(value || ""); }
 }
 
 function formatTarget(target) {

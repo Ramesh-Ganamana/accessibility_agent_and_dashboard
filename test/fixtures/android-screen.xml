@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" package="com.android.systemui" clickable="true" focusable="true" bounds="[0,0][1080,60]" />
+  <node index="1" text="" class="android.widget.FrameLayout" package="com.example.bank" bounds="[0,60][1080,2400]">
+    <node index="0" text="" resource-id="com.example.bank:id/menu" class="android.widget.ImageButton" package="com.example.bank" content-desc="" clickable="true" focusable="true" bounds="[0,60][126,186]" />
+    <node index="1" text="Login button" class="android.widget.Button" package="com.example.bank" clickable="true" focusable="true" bounds="[200,200][900,340]" />
+    <node index="2" text="" hint="" class="android.widget.EditText" package="com.example.bank" clickable="true" focusable="true" bounds="[200,400][900,540]" />
+    <node index="3" text="" hint="Email" class="android.widget.EditText" package="com.example.bank" clickable="true" focusable="true" bounds="[200,560][900,700]" />
+    <node index="4" text="" class="android.widget.LinearLayout" package="com.example.bank" clickable="true" focusable="true" bounds="[0,720][1080,860]">
+      <node index="0" text="" class="android.widget.ImageView" package="com.example.bank" content-desc="" bounds="[20,740][120,840]" />
+      <node index="1" text="Statements" class="android.widget.TextView" package="com.example.bank" bounds="[140,740][600,840]" />
+    </node>
+    <node index="5" text="" class="android.widget.ImageView" package="com.example.bank" content-desc="" bounds="[0,880][1080,1200]" />
+    <node index="6" text="" class="android.widget.ImageButton" package="com.example.bank" content-desc="Close" clickable="true" focusable="true" bounds="[900,1220][940,1260]" />
+    <node index="7" text="" class="android.widget.ImageButton" package="com.example.bank" content-desc="Close" clickable="true" focusable="true" bounds="[945,1220][985,1260]" />
+    <node index="8" text="" class="android.widget.ImageButton" package="com.example.bank" content-desc="Help" clickable="true" focusable="true" bounds="[100,1400][150,1450]" />
+    <node index="9" text="Terms &amp; conditions" class="android.widget.TextView" package="com.example.bank" clickable="true" focusable="false" bounds="[100,1500][900,1640]" />
+    <node index="10" text="" class="androidx.recyclerview.widget.RecyclerView" package="com.example.bank" scrollable="true" bounds="[0,1700][1080,2000]">
+      <node index="0" text="" class="android.widget.ImageButton" package="com.example.bank" content-desc="Share" clickable="true" focusable="true" bounds="[100,1980][160,2000]" />
+    </node>
+  </node>
+</hierarchy>

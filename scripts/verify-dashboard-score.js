@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
+import { startDashboardFixture } from "./helpers/dashboard-fixture.js";
 
-const baseUrl = "http://127.0.0.1:4173";
-const browser = await chromium.launch({ headless: true });
+const fixture = await startDashboardFixture();
+const { baseUrl } = fixture;
+let browser;
 try {
+  browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   const reports = await page.request.get(`${baseUrl}/api/reports`).then((response) => response.json());
   const selected = reports.find((report) => report.completedAt && report.summary?.pagesScanned > 0);
@@ -36,5 +39,6 @@ try {
   if (process.env.DASHBOARD_MOBILE_SCREENSHOT) await page.screenshot({ path: process.env.DASHBOARD_MOBILE_SCREENSHOT, fullPage: true });
   console.log("Dashboard score, methodology, four principles, and all report-section endpoints passed.");
 } finally {
-  await browser.close();
+  await browser?.close();
+  await fixture.close();
 }

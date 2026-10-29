@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 const safeName = (value) => String(value).replace(/[^a-z0-9_-]+/gi, "-").slice(0, 80);
 
@@ -17,7 +18,76 @@ export function resolveTarget(frame, target) {
   return locator;
 }
 
-export async function captureHighlightedEvidence({ page, frame, target, issue, outputDir, index }) {
+export function createEvidenceRegistry() {
+  return new Map();
+}
+
+export async function storeDeduplicatedEvidence({ outputDir, relativeDir = "evidence", fileName, buffer, registry }) {
+  const digest = createHash("sha256").update(buffer).digest("hex");
+  const existing = registry?.get(digest);
+  if (existing) return { path: existing, duplicate: true };
+  const relativePath = path.posix.join(relativeDir.replace(/\\/g, "/"), fileName);
+  const absolutePath = path.join(outputDir, ...relativePath.split("/"));
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await fs.writeFile(absolutePath, buffer);
+  registry?.set(digest, relativePath);
+  return { path: relativePath, duplicate: false };
+}
+
+export function consolidateDuplicateVisualFindings(report) {
+  const removedIds = new Set();
+  let mergedCount = 0;
+
+  for (const collectionName of ["issues", "incomplete", "bestPractices"]) {
+    const findings = Array.isArray(report?.[collectionName]) ? report[collectionName] : [];
+    const retainedByVisual = new Map();
+    const retained = [];
+
+    for (const finding of findings) {
+      // Page-context screenshots intentionally support many different findings. Only
+      // consolidate findings that produced the same highlighted screenshot bytes.
+      if (!finding?.evidence || finding.evidenceKind === "page-context") {
+        retained.push(finding);
+        continue;
+      }
+
+      const key = [finding.evidence, finding.ruleId, finding.pageUrl, finding.frameUrl || ""].join("|");
+      const existing = retainedByVisual.get(key);
+      if (!existing) {
+        finding.observedOccurrences = [findingOccurrence(finding)];
+        retainedByVisual.set(key, finding);
+        retained.push(finding);
+        continue;
+      }
+
+      existing.observedOccurrences.push(findingOccurrence(finding));
+      removedIds.add(finding.id);
+      mergedCount += 1;
+    }
+
+    if (collectionName !== "bestPractices" || Array.isArray(report?.bestPractices)) report[collectionName] = retained;
+  }
+
+  if (removedIds.size) {
+    for (const page of report.pages || []) {
+      page.issueIds = (page.issueIds || []).filter((id) => !removedIds.has(id));
+      page.incompleteIds = (page.incompleteIds || []).filter((id) => !removedIds.has(id));
+      if (page.bestPracticeIds) page.bestPracticeIds = page.bestPracticeIds.filter((id) => !removedIds.has(id));
+    }
+  }
+
+  return mergedCount;
+}
+
+function findingOccurrence(finding) {
+  return {
+    id: finding.id,
+    state: finding.state,
+    target: finding.target
+  };
+}
+
+export async function captureHighlightedEvidence({ page, frame, target, issue, outputDir, index, evidenceRegistry }) {
   const expectedFrameUrl = comparableUrl(issue.frameUrl);
   if (expectedFrameUrl && comparableUrl(frame.url()) !== expectedFrameUrl) return null;
   if (!(await matchesDocument(frame, issue.documentToken))) return null;
@@ -70,8 +140,6 @@ export async function captureHighlightedEvidence({ page, frame, target, issue, o
       document.documentElement.appendChild(overlay);
     }, { rect: box, text: label });
 
-    const evidenceDir = path.join(outputDir, "evidence");
-    await fs.mkdir(evidenceDir, { recursive: true });
     const fileName = `${String(index).padStart(4, "0")}-${safeName(issue.ruleId)}.png`;
     if (expectedFrameUrl && comparableUrl(frame.url()) !== expectedFrameUrl || !(await matchesDocument(frame, issue.documentToken))) {
       await page.evaluate(() => document.querySelector("[data-a11y-evidence-overlay]")?.remove()).catch(() => {});
@@ -82,10 +150,10 @@ export async function captureHighlightedEvidence({ page, frame, target, issue, o
       await page.evaluate(() => document.querySelector("[data-a11y-evidence-overlay]")?.remove()).catch(() => {});
       return null;
     }
-    await fs.writeFile(path.join(evidenceDir, fileName), screenshot);
+    const stored = await storeDeduplicatedEvidence({ outputDir, fileName, buffer: screenshot, registry: evidenceRegistry });
     await page.evaluate(() => document.querySelector("[data-a11y-evidence-overlay]")?.remove());
 
-    return `evidence/${fileName}`;
+    return stored.path;
   } catch {
     await page.evaluate(() => document.querySelector("[data-a11y-evidence-overlay]")?.remove()).catch(() => {});
     return null;

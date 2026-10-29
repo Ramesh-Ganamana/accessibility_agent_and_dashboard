@@ -14,7 +14,7 @@ const server = http.createServer((request, response) => {
   } else if (request.url === "/secret") {
     response.end(page(`
       <label for="secret-box">Account password</label>
-      <div id="secret-box" role="textbox" contenteditable="true" aria-label="Account password"></div>
+      <input id="secret-box" type="password" aria-label="Account password">
       <div id="complete-login" role="button" tabindex="0" aria-label="Complete sign in" onclick="location.href='/home'">Enter workspace</div>
     `));
   } else {

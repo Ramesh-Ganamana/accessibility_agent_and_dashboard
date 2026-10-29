@@ -1,11 +1,65 @@
+# Installed dependencies (keep package.json and package-lock.json versioned)
 node_modules/
+
+# Local environment values and credentials; keep safe configuration templates
 .env
+.env.*
+!.env.example
+!.env.*.example
+
+# Saved browser authentication, cookies and encrypted session copies
 auth_state*.json
-reports/*
-!reports/.gitkeep
+auth_state*.json.*
+*.dpapi
+.sessions/
+playwright/.auth/
+
+# Dedicated local NVDA/runtime profiles; keep nvda-addon/ source code
+/nvda-profile/
+/RAMBO/
+*.nvda-addon
+
+# Generated scans, evidence, backlogs and locally imported checklists
+/reports/*
+!/reports/.gitkeep
+
+# Generated documents, exports, previews and temporary work
+/output/
+/deliverables/
+/tmp/
+/temp/
+/.presentation-review/
+
+# Test execution artifacts and coverage
 test-results/
 playwright-report/
+playwright/.cache/
+coverage/
+.nyc_output/
+
+# Python bytecode, test caches and local virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.cache/
+
+# Logs and local process state
 *.log
+*.pid
+*.pid.lock
+
+# Local editor/assistant state and operating-system files
+/.claude/
+.idea/
+.history/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
+Desktop.ini
 
+# Journey test data may hold credentials; keep only the synthetic example
+/journeys/testdata/*
+!/journeys/testdata/example-sandbox.json

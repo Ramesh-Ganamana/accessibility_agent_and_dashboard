@@ -64,6 +64,7 @@ try {
   const config = getConfig({
     targetUrl: `http://127.0.0.1:${port}/`,
     maxPages: 8,
+    maxStates: 8,
     maxDepth: 2,
     headless: true,
     browserChannel: "bundled",
@@ -95,7 +96,14 @@ try {
   assert.ok(!report.graph.nodes.some((node) => node.label.includes("Select a Domain")));
   assert.ok(report.graph.nodes.some((node) => node.state === "dialog"));
   assert.ok(report.graph.nodes.some((node) => node.url.endsWith("/next")));
-  assert.ok(report.graph.nodes.length <= config.maxPages);
+  assert.ok(report.pages.length <= config.maxPages);
+  assert.ok(report.graph.nodes.length <= config.maxStates);
+  assert.equal(report.assistiveTechnology.actualScreenReaders.NVDA, "not-run");
+  assert.ok(report.pages.some((page) => page.screenReaderStates?.length), "observed states should include Chromium accessibility-tree snapshots");
+  assert.ok(report.summary.accessibilityTreeStates > 0, "summary should count inspected accessibility-tree states");
+  assert.ok(report.incomplete.some((finding) => finding.ruleId === "focus-visible"), "focus heuristics must remain human-review findings");
+  assert.equal(report.issues.some((finding) => finding.findingType === "needs-review"), false, "uncertain heuristics must not inflate confirmed issues");
+  assert.ok(report.graph.nodes.every((node) => typeof node.findingState === "string"), "graph nodes must expose their exact finding state for issue filtering");
   console.log("Bounded interaction crawl passed for buttons, divs, spans, dialogs, routes, depth, and unsafe-action exclusion.");
 } finally {
   await new Promise((resolve) => server.close(resolve));
@@ -104,5 +112,5 @@ try {
 }
 
 function page(body) {
-  return `<!doctype html><html lang="en"><head><title>Interaction crawler test</title></head><body><main>${body}</main></body></html>`;
+  return `<!doctype html><html lang="en"><head><title>Interaction crawler test</title><style>*:focus{outline:none;box-shadow:none}</style></head><body><main>${body}</main></body></html>`;
 }

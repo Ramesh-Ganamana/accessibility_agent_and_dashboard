@@ -1,14 +1,16 @@
 import OpenAI from "openai";
-import { isExcludedActionLabel, isUnsafeActionLabel } from "./actions.js";
+import { isExcludedActionLabel, isUnsafeActionLabel, isUnsafeControlLabel, isUnsafeNavigationUrl } from "./actions.js";
+import { waitForPageReady } from "../browser/readiness.js";
+import { actionExclusionsFor, prepareActionExclusions, guardedClick } from "../browser/action-exclusions.js";
+import { randomBytes } from "node:crypto";
 
 const MAX_ELEMENTS = 350;
-const CLICKABLE_TAGS = new Set(["a", "button", "input", "select", "textarea", "summary"]);
-const CLICKABLE_ROLES = /^(button|link|menuitem|tab|treeitem|option)$/i;
 
 export async function attemptAiGroundedAction(page, { config, onEvent = () => {}, chooseNumber } = {}) {
   if (!chooseNumber && (!config?.aiEnabled || !config?.openAiApiKey)) return { clicked: false, reason: "ai-disabled" };
+  const exclusions = config ? actionExclusionsFor(config, page.url()) : [];
+  await prepareActionExclusions(page, { excludeLabels: exclusions });
   const map = await buildNumberedDomMap(page);
-  const exclusions = applicationExclusions(config, page.url());
   const allowed = map.elements.filter((entry) => entry.actionable && !entry.unsafe && !isExcludedActionLabel(entry.label, exclusions));
   if (!allowed.length) {
     await removeGroundingOverlays(page);
@@ -16,9 +18,11 @@ export async function attemptAiGroundedAction(page, { config, onEvent = () => {}
   }
 
   onEvent({ type: "ai-grounding", message: `Numbered ${map.elements.length} deduplicated visible elements; ${allowed.length} are safe action candidates.`, url: page.url() });
-  const screenshot = await page.screenshot({ type: "jpeg", quality: 68, fullPage: true });
   let decision;
   try {
+    // The visible viewport only: a full-page capture of a long authenticated page
+    // is slow, costly and sends far more application content than needed.
+    const screenshot = await page.screenshot({ type: "jpeg", quality: 68, fullPage: false });
     decision = chooseNumber
       ? await chooseNumber({ map, allowed, screenshot })
       : await chooseGroundedNumber({ map, allowed, screenshot, config });
@@ -41,7 +45,11 @@ export async function attemptAiGroundedAction(page, { config, onEvent = () => {}
   const popup = clicked ? await popupPromise : null;
   await removeGroundingOverlays(page);
   if (!clicked) return { clicked: false, reason: "mapped-element-detached", decision };
-  await page.waitForTimeout(200).catch(() => {});
+  const ready = await waitForPageReady(popup || page, { timeout: 50_000, shellWaitMs: 50_000, settleMs: 700 });
+  if (!ready) {
+    if (popup) await popup.close().catch(() => {});
+    return { clicked: false, reason: "page-readiness-timeout", decision };
+  }
   onEvent({ type: "ai-grounding", message: `AI selected numbered element ${number}: ${selected.label || selected.tag}.`, url: page.url() });
   return {
     clicked: true,
@@ -58,11 +66,20 @@ export async function attemptAiGroundedAction(page, { config, onEvent = () => {}
 }
 
 export async function buildNumberedDomMap(page) {
+  await prepareActionExclusions(page);
   const collected = [];
   const frames = page.frames();
+  // A fresh key per map: keys left on elements by an earlier map (for example
+  // on a hidden SPA panel) can never make a new pick ambiguous.
+  const nonce = randomBytes(3).toString("hex");
   for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
-    const entries = await frames[frameIndex].evaluate(({ frameIndex, maxElements }) => {
+    const entries = await frames[frameIndex].evaluate(({ frameIndex, maxElements, nonce }) => {
       document.querySelectorAll("[data-a11y-grounding-overlay]").forEach((node) => node.remove());
+      const clearKeys = (root) => {
+        root.querySelectorAll?.("[data-a11y-ground-key]").forEach((node) => node.removeAttribute("data-a11y-ground-key"));
+        root.querySelectorAll?.("*").forEach((node) => { if (node.shadowRoot) clearKeys(node.shadowRoot); });
+      };
+      clearKeys(document);
       const tags = new Set(["a", "button", "input", "textarea", "select", "option", "label", "div", "span", "p", "img", "svg", "summary", "details", "li", "nav", "main", "section", "article", "header", "footer", "h1", "h2", "h3", "h4", "h5", "h6"]);
       const candidates = [];
       const visible = (element) => {
@@ -88,9 +105,15 @@ export async function buildNumberedDomMap(page) {
         const rect = element.getBoundingClientRect();
         const tag = element.localName;
         const role = element.getAttribute("role") || "";
-        const type = element.getAttribute("type") || "";
+        const type = element.type || element.getAttribute("type") || "";
+        const control = element.closest('button,input,select,textarea,option,label,[role="checkbox"],[role="radio"],[role="switch"],[role="option"],[role="slider"],[role="spinbutton"]');
+        const protectedControl = window.__clarityActionExclusions?.matches(element) || element.isContentEditable || Boolean(element.closest('[contenteditable="true"]'))
+          || Boolean(control && (control.localName !== "button" || control.form && /^(submit|reset)$/.test(control.type)))
+          || element.matches(':disabled,[aria-disabled="true"]');
+        const controlLabel = control ? compact(control.getAttribute("aria-label") || control.textContent) : "";
+        const href = element.closest("a[href],area[href]")?.href || "";
         const nativeLabel = element.labels ? [...element.labels].map((label) => label.textContent).join(" ") : "";
-        const label = compact(element.getAttribute("aria-label") || element.getAttribute("title") || nativeLabel || ownText(element) || (["input", "textarea", "select"].includes(tag) ? element.getAttribute("placeholder") : "") || element.textContent);
+        const label = compact(window.__clarityActionExclusions?.label(element) || element.getAttribute("aria-label") || element.getAttribute("title") || nativeLabel || ownText(element) || (["input", "textarea", "select"].includes(tag) ? element.getAttribute("placeholder") : "") || element.textContent);
         const actionable = ["a", "button", "input", "select", "textarea", "summary"].includes(tag) || /^(button|link|menuitem|tab|treeitem|option)$/.test(role) || element.hasAttribute("onclick") || element.tabIndex >= 0 || getComputedStyle(element).cursor === "pointer";
         const semantic = actionable || Boolean(role) || !["div", "span"].includes(tag) || Boolean(ownText(element).trim());
         return {
@@ -100,6 +123,9 @@ export async function buildNumberedDomMap(page) {
           type,
           label,
           actionable,
+          protectedControl,
+          controlLabel,
+          href,
           semantic,
           rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) }
         };
@@ -136,20 +162,23 @@ export async function buildNumberedDomMap(page) {
       };
 
       return unique.map((entry, localIndex) => {
-        const key = `ground-f${frameIndex}-e${localIndex}`;
+        const key = `ground-${nonce}-f${frameIndex}-e${localIndex}`;
         entry.element.setAttribute("data-a11y-ground-key", key);
-        return { key, frameIndex, tag: entry.tag, role: entry.role, type: entry.type, label: entry.label, actionable: entry.actionable, rect: entry.rect, path: pathFor(entry.element) };
+        return { key, frameIndex, tag: entry.tag, role: entry.role, type: entry.type, label: entry.label, actionable: entry.actionable, protectedControl: entry.protectedControl, controlLabel: entry.controlLabel, href: entry.href, rect: entry.rect, path: pathFor(entry.element) };
       });
-    }, { frameIndex, maxElements: MAX_ELEMENTS }).catch(() => []);
+    }, { frameIndex, maxElements: MAX_ELEMENTS, nonce }).catch(() => []);
     collected.push(...entries);
   }
 
   const elements = collected.slice(0, MAX_ELEMENTS).map((entry, index) => {
     const label = scrub(entry.label);
-    const unsafe = isUnsafeActionLabel(label) || /password|passcode|otp|verification code|captcha|file|submit|reset/i.test(`${entry.type} ${label}`);
+    const labelCheck = entry.href ? isUnsafeActionLabel : isUnsafeControlLabel;
+    const unsafe = entry.protectedControl || labelCheck(label) || labelCheck(entry.controlLabel) || isUnsafeNavigationUrl(entry.href)
+      || /password|passcode|otp|verification code|captcha|file|reset/i.test(`${entry.type} ${label}`);
     const detectedInteractive = entry.actionable;
     const actionable = detectedInteractive || Boolean(label) || ["img", "svg", "input", "select", "textarea"].includes(entry.tag);
-    return { ...entry, number: index + 1, label, detectedInteractive, actionable, unsafe };
+    const { protectedControl, controlLabel, href, ...publicEntry } = entry;
+    return { ...publicEntry, number: index + 1, label, detectedInteractive, actionable, unsafe };
   });
   await drawGroundingOverlays(page, elements);
   return { page: { origin: safeOrigin(page.url()), title: scrub(await page.title()).slice(0, 160) }, elements };
@@ -188,13 +217,6 @@ async function chooseGroundedNumber({ map, allowed, screenshot, config }) {
   return JSON.parse(response.output_text || "{}");
 }
 
-function applicationExclusions(config, pageUrl) {
-  if (!config?.excludeActionLabels?.length) return [];
-  if (!config.excludeActionOrigin) return config.excludeActionLabels;
-  try { return new URL(pageUrl).origin === config.excludeActionOrigin ? config.excludeActionLabels : []; }
-  catch { return []; }
-}
-
 async function drawGroundingOverlays(page, elements) {
   for (const frame of page.frames()) {
     const frameElements = elements.filter((entry) => entry.frameIndex === page.frames().indexOf(frame));
@@ -231,24 +253,10 @@ async function drawGroundingOverlays(page, elements) {
 async function clickMappedElement(page, selected) {
   const frame = page.frames()[selected.frameIndex];
   if (!frame) return false;
-  return frame.evaluate((key) => {
-    const find = (root) => {
-      const direct = root.querySelector?.(`[data-a11y-ground-key="${CSS.escape(key)}"]`);
-      if (direct) return direct;
-      for (const element of root.querySelectorAll?.("*") || []) {
-        if (element.shadowRoot) {
-          const nested = find(element.shadowRoot);
-          if (nested) return nested;
-        }
-      }
-      return null;
-    };
-    const element = find(document);
-    if (!element || element.matches(":disabled,[aria-disabled='true']")) return false;
-    element.scrollIntoView({ block: "center", inline: "center" });
-    element.click();
-    return true;
-  }, selected.key).catch(() => false);
+  // Locator actions check visibility, enabled state, and obstruction. A DOM
+  // element.click() would activate controls hidden behind a modal.
+  return guardedClick(frame.locator(`[data-a11y-ground-key="${selected.key}"]`), { timeout: 5_000 })
+    .then(() => true).catch(() => false);
 }
 
 export async function removeGroundingOverlays(page) {

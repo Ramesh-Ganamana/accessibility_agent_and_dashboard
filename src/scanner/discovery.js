@@ -1,22 +1,18 @@
-export async function discoverPageLinks(page, baseUrl) {
-  const actions = await discoverNavigationActions(page, baseUrl);
-  return [...new Set(actions.filter((action) => !action.popup).map((action) => action.url))];
-}
+import { isExcludedActionLabel, isUnsafeActionLabel, isUnsafeNavigationUrl } from "./actions.js";
+import { documentType } from "./documents.js";
+import { isExcludedActionUrl, prepareActionExclusions } from "../browser/action-exclusions.js";
 
-export async function discoverPopupLinks(page, baseUrl) {
-  const actions = await discoverNavigationActions(page, baseUrl);
-  return [...new Set(actions.filter((action) => action.popup).map((action) => action.url))];
-}
-
-export async function discoverNavigationActions(page, baseUrl) {
+export async function discoverNavigationActions(page, baseUrl, options = {}) {
+  await prepareActionExclusions(page, options);
   const entries = await page.evaluate(() => {
     const found = [];
     const visit = (root) => {
       root.querySelectorAll?.("a[href], area[href]").forEach((anchor) => {
+        if (window.__clarityActionExclusions?.matches(anchor)) return;
         const visibleText = (anchor.getAttribute("aria-label") || anchor.textContent || anchor.getAttribute("title") || "").replace(/\s+/g, " ").trim();
         found.push({
           href: anchor.href,
-          label: visibleText || anchor.getAttribute("href") || "link",
+          label: window.__clarityActionExclusions?.label(anchor) || visibleText || anchor.getAttribute("href") || "link",
           popup: anchor.target === "_blank",
           selector: anchor.id ? `#${CSS.escape(anchor.id)}` : `${anchor.localName}[href="${(anchor.getAttribute("href") || "").replaceAll('"', '\\"')}"]`
         });
@@ -34,19 +30,18 @@ export async function discoverNavigationActions(page, baseUrl) {
   for (const entry of entries) {
     const url = normalizeUrl(entry.href);
     if (!url || new URL(url).origin !== origin) continue;
+    // PDFs and office files are handled by the document checker, never crawled as
+    // pages (their signed download links are kept out of the report as well).
+    if (documentType(url)) continue;
     const label = String(entry.label || "link").slice(0, 120);
+    // The normalized address is checked too: dropping a #fragment, a trailing
+    // slash or tracking parameters must not turn into a listed URL.
+    if (isUnsafeActionLabel(entry.label) || isUnsafeNavigationUrl(url) || isExcludedActionLabel(entry.label, options.excludeLabels)
+      || isExcludedActionUrl(url, options.excludeLabels) || isExcludedActionUrl(entry.href, options.excludeLabels)) continue;
     const key = `${url}|${label}|${entry.popup}`;
     if (!unique.has(key)) unique.set(key, { url, label, popup: Boolean(entry.popup), selector: entry.selector });
   }
   return [...unique.values()];
-}
-
-export async function findDialogTriggers(page) {
-  return page.locator([
-    '[aria-haspopup="dialog"]',
-    '[data-toggle="modal"]',
-    '[data-bs-toggle="modal"]'
-  ].join(", "));
 }
 
 export async function collectTechnologyNotes(page) {

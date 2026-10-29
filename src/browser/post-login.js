@@ -1,9 +1,14 @@
 import { isPageVisiblyReady, waitForPageReady } from "./readiness.js";
+import { resolveBlockingObstruction } from "./blockers.js";
+import { assertActionAllowed, guardedClick } from "./action-exclusions.js";
 
 const OBSTRUCTION_SELECTOR = '[role="dialog"],[aria-modal="true"],dialog[open],.modal.show,.modal[open],[popover]:popover-open';
 const selectedContextByPage = new WeakMap();
+// Once a crawl checkpoint has waited and seen no chooser, later checkpoints do
+// not wait again unless the application has just re-authenticated.
+const chooserAbsentByPage = new WeakMap();
 
-export async function waitForPostLoginObstruction(page, timeout = 300_000) {
+export async function waitForPostLoginObstruction(page, timeout = 60_000) {
   const deadline = Date.now() + Math.max(0, timeout);
   let readySince = null;
   do {
@@ -32,39 +37,42 @@ export async function resolvePostLoginObstructions(page, config, onEvent = () =>
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     if (!contextSelected) {
-      const context = await resolveContextChooserIfPresent(page, config, onEvent);
+      const context = await resolveContextChooserIfPresent(page, config, onEvent, { phase: "post-login" });
       if (context.handled) {
         contextSelected = true;
         continue;
       }
     }
 
-    const obstruction = await findSafeCloseControl(page);
-    if (obstruction?.requiresUser) throw postLoginError(`User action required: ${obstruction.reason}`);
-    if (!obstruction) break;
-    const close = page.frames()[obstruction.frameIndex]?.locator(`[data-a11y-post-login-key="${obstruction.key}"]`).first();
-    if (!close) break;
-    onEvent({ type: "post-login", message: `Closing a non-security obstruction using “${obstruction.label}”.`, url: page.url() });
-    await close.click({ timeout: 4_000 });
-    await page.waitForTimeout(500);
-    await waitForPageReady(page, { timeout: 15_000, settleMs: 500 });
+    const obstruction = await resolveBlockingObstruction(page, { onEvent });
+    if (!obstruction.detected) break;
+    if (!obstruction.handled) throw postLoginError(`User action required: ${obstruction.reason}`);
   }
 }
 
-// This intentionally handles only a visible context chooser. It is safe to call
-// at crawl checkpoints because normal dialogs and ordinary page inputs are left
-// untouched when a domain/tenant/workspace-style chooser is not present.
+// This intentionally handles only a visible context chooser. At crawl
+// checkpoints ("crawl" phase) it acts only on a single-field picker dialog and
+// only when a value was supplied, so "Add client" or "Contact us" dialogs with a
+// Company field are never typed into and never abort the crawl.
 export async function resolveContextChooserIfPresent(page, config, onEvent = () => {}, options = {}) {
+  const phase = options.phase === "post-login" ? "post-login" : "crawl";
   const desiredContext = String(config.login?.postLoginValue || "").trim().slice(0, 256);
+  if (phase === "crawl" && !desiredContext) return { handled: false, alreadySelected: false };
   const alreadySelected = Boolean(desiredContext) && selectedContextByPage.get(page) === desiredContext;
-  let contextInput = await findContextInput(page);
-  const appearanceTimeout = alreadySelected ? 0 : Math.max(0, Number(options.appearanceTimeout || 0));
+  const strict = phase === "crawl";
+  let contextInput = await findContextInput(page, strict);
+  const skipWait = alreadySelected || (phase === "crawl" && chooserAbsentByPage.get(page) && !options.afterAuthentication);
+  const appearanceTimeout = skipWait ? 0 : Math.max(0, Number(options.appearanceTimeout || 0));
   const appearanceDeadline = Date.now() + appearanceTimeout;
   while (!contextInput && Date.now() < appearanceDeadline) {
     await page.waitForTimeout(Math.min(150, Math.max(1, appearanceDeadline - Date.now()))).catch(() => {});
-    contextInput = await findContextInput(page);
+    contextInput = await findContextInput(page, strict);
   }
-  if (!contextInput) return { handled: false, alreadySelected };
+  if (!contextInput) {
+    if (appearanceTimeout > 0) chooserAbsentByPage.set(page, true);
+    return { handled: false, alreadySelected };
+  }
+  chooserAbsentByPage.delete(page);
 
   if (!desiredContext) throw postLoginError(`Post-login setup requires a ${contextInput.kind}. Enter it in the “Domain / tenant / workspace” field and retry.`);
 
@@ -73,35 +81,46 @@ export async function resolveContextChooserIfPresent(page, config, onEvent = () 
   if (!input || !(await input.isVisible({ timeout: 500 }).catch(() => false))) return { handled: false };
 
   onEvent({ type: "post-login", message: `A ${contextInput.kind} chooser appeared; selecting the supplied value.`, url: page.url() });
+  await assertActionAllowed(input);
   await input.fill(desiredContext);
   const option = await waitForExactOption(page, desiredContext, 10_000);
   if (!option) throw postLoginError(`The post-login ${contextInput.kind} chooser did not show an exact match for the supplied value.`);
   const locator = page.frames()[option.frameIndex]?.locator(`[data-a11y-post-login-key="${option.key}"]`).first();
   if (!locator) return { handled: false };
   await locator.scrollIntoViewIfNeeded({ timeout: 2_000 }).catch(() => {});
-  await locator.click({ timeout: 5_000 });
+  await guardedClick(locator, { timeout: 5_000 });
   selectedContextByPage.set(page, desiredContext);
   onEvent({ type: "post-login-context-selected", message: `Selected “${desiredContext}” in the ${contextInput.kind} chooser.`, url: page.url() });
   await page.waitForTimeout(250);
-  const ready = await waitForPageReady(page, { timeout: 300_000, shellWaitMs: 300_000, settleMs: 700 });
+  const loadWait = Number.isFinite(Number(config.appShellWaitMs)) ? Math.max(30_000, Number(config.appShellWaitMs)) : 300_000;
+  const ready = await waitForPageReady(page, { timeout: loadWait, shellWaitMs: loadWait, settleMs: 700 });
   if (!ready) throw postLoginError(`The application did not finish loading after the ${contextInput.kind} selection.`);
   return { handled: true, kind: contextInput.kind, value: desiredContext };
 }
 
-async function findContextInput(page) {
+async function findContextInput(page, strict = false) {
   const frames = page.frames();
   for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
-    const result = await frames[frameIndex].evaluate(({ frameIndex }) => {
+    const result = await frames[frameIndex].evaluate(({ frameIndex, strict }) => {
       const visible = (element) => { const style = getComputedStyle(element); const rect = element.getBoundingClientRect(); return style.display !== "none" && style.visibility !== "hidden" && rect.width >= 3 && rect.height >= 3; };
       const containers = [...document.querySelectorAll('[role="dialog"],[aria-modal="true"],dialog[open],.modal.show,.modal[open],[popover]:popover-open')].filter(visible);
-      const candidates = containers.flatMap((container) => [...container.querySelectorAll('input:not([type="password"]):not([type="hidden"]),textarea,[role="combobox"],[contenteditable="true"]')]);
-      for (let index = 0; index < candidates.length; index += 1) {
-        const element = candidates[index];
-        if (!visible(element)) continue;
+      let index = 0;
+      for (const container of containers) {
+        const fields = [...container.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="submit"]):not([type="button"]),textarea,select,[role="combobox"],[contenteditable="true"]')].filter(visible);
+        // A chooser is a picker with one field. Multi-field dialogs are forms.
+        if (fields.length !== 1) { index += fields.length; continue; }
+        const element = fields[0];
+        index += 1;
+        if (element.matches('textarea,select,input[type="password"]')) continue;
         const labels = element.labels ? [...element.labels].map((label) => label.textContent).join(" ") : "";
         const semantic = [element.getAttribute("placeholder"), element.getAttribute("aria-label"), element.getAttribute("name"), element.id, labels, element.closest("label")?.textContent].filter(Boolean).join(" ");
         const match = semantic.match(/\b(domains?|tenants?|workspaces?|organizations?|compan(?:y|ies)|clients?)\b/i);
         if (!match) continue;
+        if (strict) {
+          const framing = [container.getAttribute("aria-label"), ...[...container.querySelectorAll('h1,h2,h3,[role="heading"],legend')].map((node) => node.textContent)].filter(Boolean).join(" ");
+          const searchLike = element.type === "search" || element.getAttribute("role") === "combobox" || element.hasAttribute("aria-autocomplete") || element.hasAttribute("list") || /^\s*(search|find|filter)\b/i.test(element.getAttribute("placeholder") || "");
+          if (!searchLike && !/\b(select|choose|switch|pick)\b/i.test(framing)) continue;
+        }
         const key = `post-login-input-f${frameIndex}-${index}`;
         element.setAttribute("data-a11y-post-login-key", key);
         const matchedKind = match[1].toLowerCase();
@@ -109,7 +128,7 @@ async function findContextInput(page) {
         return { frameIndex, key, kind };
       }
       return null;
-    }, { frameIndex }).catch(() => null);
+    }, { frameIndex, strict }).catch(() => null);
     if (result) return result;
   }
   return null;
@@ -147,32 +166,6 @@ async function findExactOption(page, value) {
       return { frameIndex, key };
     }, { frameIndex, desired: value }).catch(() => null);
     if (option) return option;
-  }
-  return null;
-}
-
-async function findSafeCloseControl(page) {
-  const frames = page.frames();
-  for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
-    const result = await frames[frameIndex].evaluate(({ frameIndex }) => {
-      const visible = (element) => { const style = getComputedStyle(element); const rect = element.getBoundingClientRect(); return style.display !== "none" && style.visibility !== "hidden" && rect.width >= 3 && rect.height >= 3; };
-      const containers = [...document.querySelectorAll('[role="dialog"],[aria-modal="true"],dialog[open],.modal.show,.modal[open]')].filter(visible);
-      for (const container of containers) {
-        const text = (container.textContent || "").replace(/\s+/g, " ").trim();
-        if (/captcha|verification code|one[- ]time|\botp\b|mfa|authenticator|approve sign|passkey|security key|biometric|consent|permission/i.test(text)) return { requiresUser: true, reason: "a security or consent dialog is blocking the application" };
-        const control = [...container.querySelectorAll('button,[role="button"],[aria-label],[title]')].filter(visible).find((element) => {
-          const label = (element.getAttribute("aria-label") || element.getAttribute("title") || element.textContent || "").replace(/\s+/g, " ").trim();
-          return /^(?:close|dismiss|not now|skip|cancel|x|×)$/i.test(label);
-        });
-        if (!control) continue;
-        const key = `post-login-close-f${frameIndex}`;
-        control.setAttribute("data-a11y-post-login-key", key);
-        const label = (control.getAttribute("aria-label") || control.getAttribute("title") || control.textContent || "Close").replace(/\s+/g, " ").trim();
-        return { frameIndex, key, label };
-      }
-      return null;
-    }, { frameIndex }).catch(() => null);
-    if (result) return result;
   }
   return null;
 }

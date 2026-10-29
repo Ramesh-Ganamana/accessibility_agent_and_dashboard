@@ -6,16 +6,34 @@
   <meta name="description" content="Accessibility automation dashboard with evidence screenshots, crawl graph, and VPAT export.">
   <title>RAMBO — Accessibility Automation Agent</title>
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/dashboard.css">
 </head>
 <body>
-  <a class="skip-link" href="#main-content">Skip to report</a>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <aside class="workspace-sidebar" aria-label="Workspace navigation">
+    <a class="workspace-brand" href="/" aria-label="RAMBO home"><span class="workspace-logo" aria-hidden="true">R<span></span></span><span>RAMBO<small>ACCESSIBILITY STUDIO</small></span></a>
+    <span class="nav-section-label">Workspace</span>
+    <nav class="workspace-nav" aria-label="Audit workspace">
+      <button type="button" data-workspace-nav="scan" class="nav-scan" aria-label="New scan"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New scan</span></button>
+      <button type="button" data-workspace-nav="overview" aria-current="page" aria-label="Overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span></button>
+      <button type="button" data-workspace-nav="issues" aria-label="Issues and evidence"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 20h20L12 3Z M12 9v5m0 3v1"/></svg><span>Issues &amp; evidence</span></button>
+      <button type="button" data-workspace-nav="crawl" aria-label="Crawl graph"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="16" y="16" width="6" height="6" rx="1"/><path d="M12 8v4H5v4m7-4h7v4"/></svg><span>Crawl graph</span></button>
+      <button type="button" data-workspace-nav="assistive" aria-label="Screen readers"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14v-3a8 8 0 0 1 16 0v3M4 12H2v7h5v-7H4Zm16 0h2v7h-5v-7h3ZM20 19v2h-7"/></svg><span>Screen readers</span></button>
+      <button type="button" data-workspace-nav="vpat" aria-label="VPAT and ACR"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7l-5-5Zm0 0v6h5M8 12h8m-8 4h6"/></svg><span>VPAT / ACR</span></button>
+      <button type="button" data-workspace-nav="remediation" aria-label="Remediation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 6 2 2 4-4m3 2h9M3 13l2 2 4-4m3 2h9M3 20l2 2 4-4m3 2h9"/></svg><span>Remediation</span></button>
+      <button type="button" data-workspace-nav="comparison" aria-label="Compare reports"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4"/></svg><span>Compare reports</span></button>
+    </nav>
+    <div class="sidebar-note"><span class="sidebar-note-icon" aria-hidden="true">✓</span><strong>Evidence-led reviews</strong><p>Automated insights.<br>Human-validated decisions.</p><span class="sidebar-version">LOCAL WORKSPACE</span></div>
+  </aside>
   <header class="topbar">
-    <a class="brand" href="/" aria-label="Clarity home">
+    <a class="brand" href="/" aria-label="RAMBO home">
       <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
       <span><strong>RAMBO</strong><small>Accessibility agent</small></span>
     </a>
+    <div class="workspace-breadcrumb">Workspace <span aria-hidden="true">/</span> <strong>Accessibility</strong></div>
     <div class="topbar-actions">
-      <span class="engine-state"><span class="pulse"></span> Engine ready</span>
+      <span class="engine-state"><span class="pulse"></span> Local workspace</span>
+      <button type="button" class="button primary topbar-new-scan" data-workspace-nav="scan">+ New scan</button>
       <button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle color theme">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/><circle cx="12" cy="12" r="4"/></svg>
       </button>
@@ -23,11 +41,12 @@
   </header>
 
   <main id="main-content">
-    <section class="hero" aria-labelledby="page-title">
+    <section class="hero" id="scan-workspace" aria-labelledby="page-title">
       <div class="hero-copy">
-        <p class="eyebrow">Web accessibility intelligence</p>
-        <h1 id="page-title">See every barrier.<br><em>Trace every path.</em></h1>
-        <p>Deterministic WCAG scanning with targeted AI review, visual evidence, and audit-ready VPAT outputs.</p>
+        <p class="eyebrow">Start with a clear scope</p>
+        <h2 id="page-title">Your next audit<br>starts here.</h2>
+        <p>Explore your application, collect visual evidence and turn accessibility findings into a focused review plan.</p>
+        <ol class="scan-workflow"><li><span>01</span><div><strong>Set the scope</strong><p>Choose your application, standard and scan limits.</p></div></li><li><span>02</span><div><strong>Collect the evidence</strong><p>Inspect pages, interactions and selected reader checks.</p></div></li><li><span>03</span><div><strong>Review and improve</strong><p>Prioritise findings, document decisions and compare scans.</p></div></li></ol>
       </div>
       <form class="scan-card" id="scan-form">
         <div class="scan-card-heading">
@@ -44,11 +63,24 @@
           <button type="submit">Start scan <svg class="button-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h9m-3-3 3 3-3 3"/></svg></button>
         </div>
         <div class="scan-options">
-          <label title="Maximum total page and interaction states to inspect">State limit <input name="maxPages" type="number" min="1" max="100" value="10"></label>
+          <label title="Maximum distinct page URLs to inspect; set 1 to inspect only the starting page">Page limit <input name="maxPages" type="number" min="1" max="100" value="10" aria-describedby="crawl-budget-note"></label>
+          <label title="Maximum total page and interaction states to inspect, independently of the page limit">State limit <input name="maxStates" type="number" min="1" max="500" value="100" aria-describedby="crawl-budget-note"></label>
           <label title="Maximum chain of navigation and clickable actions from the starting state">Depth <input name="maxDepth" type="number" min="0" max="8" value="2"></label>
           <label class="toggle"><input name="aiEnabled" type="checkbox"><span></span> Conditional vision AI</label>
         </div>
-        <label class="action-exclusions" for="exclude-action-labels">Do not click in this application <small>(optional; exact labels separated by commas, applied only to the Application URL origin)</small><input id="exclude-action-labels" name="excludeActionLabels" type="text" autocomplete="off" placeholder="Example: External provider, Promotional banner"></label>
+        <div class="audit-options">
+          <label for="audit-profile">Application profile<select id="audit-profile" name="auditProfile"><option value="general">General web application</option><option value="financial">Financial web application</option></select></label>
+          <label for="audit-version">Audit standard<select id="audit-version" name="wcagVersion"><option value="2.2">WCAG 2.2 A + AA</option><option value="2.1">WCAG 2.1 A + AA</option></select></label>
+          <label for="scan-device">Viewport<select id="scan-device" name="device"><option value="desktop">Desktop (1440 &times; 960)</option><option value="mobile">Mobile (Pixel 7 emulation, touch)</option></select></label>
+        </div>
+        <p class="form-note" id="audit-profile-note">The same safe web scanner is used for both profiles. Financial adds a specialist review checklist, not automatic regulatory certification. Use an authorized test environment.</p>
+        <p class="form-note" id="crawl-budget-note">Page limit 1 still explores safe controls and dialogs on that page, within the state and depth limits. <span id="nvda-order-note">NVDA, when enabled, starts with the visible browser. Each state is scanned and tested with NVDA before crawling continues—including menus and dialogs at the same URL.</span></p>
+        <div class="nvda-scan-option">
+          <label class="toggle" for="nvda-enabled"><input id="nvda-enabled" name="nvdaEnabled" type="checkbox" disabled><span></span><strong id="nvda-mode-label">Run actual NVDA during the headed crawl</strong></label>
+          <small id="nvda-capability-status">Checking this Windows session for NVDA…</small>
+        </div>
+        <label class="action-exclusions" for="exclude-action-labels">Do not click in this application <small>(optional; one entry per line. Commas also separate entries, so put an entry that contains a comma in double quotes, for example "No, thanks". Any text, word or phrase, image alt text or file name, attribute value such as an id, class or data-test value, attribute=value, CSS selector, or a full link/image URL or /path. Every entry applies to this application, including its www and https address, and to journeys started below)</small><textarea id="exclude-action-labels" name="excludeActionLabels" rows="3" autocomplete="off" spellcheck="false" aria-describedby="exclude-action-summary" placeholder="Example:&#10;First button&#10;Kaiser Permanente&#10;/provider"></textarea></label>
+        <p class="form-note action-exclusions-summary" id="exclude-action-summary" aria-live="polite"></p>
         <div class="auth-box">
           <label class="auth-toggle" for="auth-enabled">
             <span><strong>Website requires login</strong><small>Use credentials only for this local scan</small></span>
@@ -62,7 +94,8 @@
             <label class="remember-session"><input name="persistSession" type="checkbox" checked> Remember the authenticated session on this computer</label>
             <label class="remember-session ai-auth-option"><input id="auth-ai-enabled" name="authAiEnabled" type="checkbox"> AI-assisted fallback for unfamiliar login forms <small id="auth-ai-status">Checking API availability…</small></label>
             <details class="auth-advanced auth-wide">
-              <summary>Advanced login selectors</summary>
+              <summary>Advanced login selectors (optional overrides)</summary>
+              <p>Leave these blank for automatic login-control discovery. Use an override only for a form that cannot be identified safely.</p>
               <div>
                 <label>Username selector<input name="emailSelector" type="text" placeholder='#signInName, input[name="username"]'></label>
                 <label>Password selector<input name="passwordSelector" type="text" placeholder='input[type="password"]'></label>
@@ -72,7 +105,11 @@
             <p class="credential-note auth-wide"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg> Passwords, input values, cookies, and tokens remain local. When Conditional Vision AI is enabled, sanitized control metadata and numbered screenshots may be sent for login or stalled-crawl navigation. Saved sessions contain cookies and must also be protected.</p>
           </div>
         </div>
-        <div class="job-progress" id="job-progress" role="status" aria-live="polite" aria-atomic="false" tabindex="-1" hidden>
+        <!-- Only phase changes and the final outcome are announced. The panel itself
+             updates every second (elapsed time, recent steps) and is not a live region. -->
+        <p class="visually-hidden" id="job-announcer" role="status" aria-live="polite" aria-atomic="true"></p>
+        <p class="visually-hidden" id="job-alert" role="alert" aria-atomic="true"></p>
+        <div class="job-progress" id="job-progress" aria-labelledby="job-status-label" role="region" tabindex="-1" hidden>
           <div class="job-status-heading">
             <span class="job-status-icon" id="job-status-icon" aria-hidden="true">●</span>
             <div><span class="job-status-label" id="job-status-label">Starting</span><strong id="job-message">Preparing browser…</strong></div>
@@ -82,15 +119,24 @@
           <progress id="job-progressbar" max="100" value="0">0%</progress>
           <ol class="job-event-list" id="job-event-list" aria-label="Latest scan steps"></ol>
         </div>
-        <p class="form-note" id="scan-note">Crawls safe links, controls, dialogs, popups, frames, and open Shadow DOM. After 50 seconds without progress, Conditional Vision AI can use a numbered-element fallback.</p>
+        <p class="form-note" id="scan-note">Crawls safe links, controls, dialogs, popups, first-party frames, and open Shadow DOM. When a state yields no progress, Conditional Vision AI (if enabled) can use a numbered-element fallback.</p>
       </form>
+      <section class="journey-runner" aria-labelledby="journey-runner-title">
+        <h3 id="journey-runner-title">Scripted journeys</h3>
+        <p class="form-note">Runs a journey file from the <code>journeys</code> folder (for example login, KYC form, statements) with its local test data, and scans each checkpoint. Journeys only visit their declared websites, and steps that change data run only when marked consequential in a sandbox or staging environment. A step that targets an entry in “Do not click in this application” is stopped and reported as blocked.</p>
+        <div class="journey-controls">
+          <label>Journey<select id="journey-file"><option value="">No journey files found</option></select></label>
+          <button class="button secondary" id="journey-run" type="button" disabled>Run journey</button>
+        </div>
+        <p id="journey-message" role="status" aria-live="polite"></p>
+      </section>
     </section>
 
     <section class="report-shell" id="report-shell" aria-labelledby="report-title">
       <div class="report-heading">
         <div>
           <div class="report-kicker"><span id="report-state-dot"></span><span id="report-domain">Demo audit</span></div>
-          <h2 id="report-title">Accessibility report</h2>
+          <h1 id="report-title">Accessibility overview</h1>
           <p id="report-date">Interactive sample · run a scan to replace it with live results</p>
         </div>
         <div class="report-actions">
@@ -100,6 +146,8 @@
           <a class="button primary" id="csv-export" href="#">Export ACR</a>
         </div>
       </div>
+
+      <p class="comparison-toast" id="report-toast" role="alert" hidden></p>
 
       <section class="health-stage" aria-labelledby="health-title">
         <div class="health-score-card">
@@ -135,7 +183,9 @@
         <button role="tab" aria-selected="true" aria-controls="panel-overview" id="tab-overview" data-tab="overview">Overview</button>
         <button role="tab" aria-selected="false" aria-controls="panel-issues" id="tab-issues" data-tab="issues">Issues <span id="issue-tab-count">12</span></button>
         <button role="tab" aria-selected="false" aria-controls="panel-crawl" id="tab-crawl" data-tab="crawl">Crawl graph</button>
+        <button role="tab" aria-selected="false" aria-controls="panel-assistive" id="tab-assistive" data-tab="assistive">Screen-reader readiness</button>
         <button role="tab" aria-selected="false" aria-controls="panel-vpat" id="tab-vpat" data-tab="vpat">VPAT / ACR</button>
+        <button role="tab" aria-selected="false" aria-controls="panel-remediation" id="tab-remediation" data-tab="remediation">Remediation <span id="remediation-tab-count">0</span></button>
       </div>
 
       <section class="tab-panel" role="tabpanel" id="panel-overview" aria-labelledby="tab-overview">
@@ -166,7 +216,7 @@
               <input id="issue-search" type="search" placeholder="Filter by rule, page, or selector" aria-label="Filter issues">
             </div>
             <select id="impact-filter" aria-label="Filter by impact"><option value="all">All impacts</option><option value="critical">Critical</option><option value="serious">Serious</option><option value="moderate">Moderate</option><option value="minor">Minor</option></select>
-            <select id="finding-status-filter" aria-label="Filter by review status"><option value="all">Confirmed + needs review</option><option value="confirmed">Confirmed only</option><option value="needs-review">Needs review only</option></select>
+            <select id="finding-status-filter" aria-label="Filter by review status"><option value="all">Confirmed + needs review</option><option value="confirmed">Confirmed only</option><option value="needs-review">Needs review only</option><option value="best-practice">Best practice only (not scored)</option></select>
           </div>
           <div class="issue-list" id="issue-list"></div>
         </div>
@@ -189,6 +239,7 @@
           <div class="technical-detail"><span>DOM target</span><code id="evidence-target">—</code></div>
           <div class="technical-detail"><span>Why it matters</span><p id="evidence-summary">Choose an issue to inspect its screenshot and technical context.</p></div>
           <div class="technical-detail" id="review-history-block" hidden><span>Review history</span><ol class="review-history" id="review-history"></ol></div>
+          <div class="technical-detail" id="track-finding-block" hidden><button class="button secondary" id="track-finding" type="button">Add to remediation backlog</button><p class="form-note" id="track-finding-message" role="status"></p></div>
         </aside>
       </section>
 
@@ -197,15 +248,158 @@
           <div><span class="overline">Application map</span><h3>Interactive crawl graph</h3><p>Each node is an observed application state. Arrow labels show the recorded navigation, popup, or dialog action. Select a node to inspect its findings.</p></div>
           <div class="graph-legend"><span><i class="node-dot pass"></i> Scanned</span><span><i class="node-dot failed"></i> Failed</span><span><i class="edge-line popup"></i> Popup</span></div>
         </div>
+        <p class="form-note" id="crawl-coverage-note" hidden></p>
+        <section class="tab-summary" id="tab-summary" aria-labelledby="tab-summary-title" hidden>
+          <div><h4 id="tab-summary-title">New tabs opened during the crawl</h4><strong id="tab-summary-count">0 tested in place · 0 not tested</strong></div>
+          <p>Same-site tabs were tested in place and closed, then the agent returned to the home tab. Tabs on another website, unsafe addresses, documents and excluded paths were closed without testing.</p>
+          <ul id="external-tabs-list" aria-label="Tabs closed without testing"></ul>
+        </section>
         <div class="graph-wrap">
           <svg id="crawl-graph" role="img" aria-label="Graph of observed application states and action transitions"></svg>
           <div class="graph-detail" id="graph-detail"><span>Select a page</span><strong>Explore its route and findings</strong></div>
         </div>
       </section>
 
+      <section class="tab-panel" role="tabpanel" id="panel-assistive" aria-labelledby="tab-assistive" hidden>
+        <div class="assistive-heading">
+          <div><span class="overline">Assistive-technology surface</span><h3>Screen-reader readiness</h3><p id="assistive-disclaimer">This inspects the browser accessibility tree. It is not a run with NVDA, JAWS, VoiceOver, or TalkBack.</p></div>
+          <span class="assistive-mode" id="assistive-mode">Browser tree inspection</span>
+        </div>
+        <div class="assistive-product-grid" aria-label="Actual screen-reader execution status">
+          <article><strong>NVDA</strong><span id="at-nvda">Not run</span></article>
+          <article><strong>JAWS</strong><span id="at-jaws">Not run</span></article>
+          <article><strong>VoiceOver</strong><span id="at-voiceover">Not run</span></article>
+          <article><strong>TalkBack</strong><span id="at-talkback">Not run</span></article>
+        </div>
+        <section class="nvda-run-panel" id="nvda-run-panel" aria-labelledby="nvda-run-title" hidden>
+          <div class="nvda-run-heading">
+            <div><span class="overline">Actual product execution</span><h4 id="nvda-run-title">NVDA state test</h4><p id="nvda-run-summary"></p></div>
+            <span class="assistive-mode" id="nvda-run-outcome">Not run</span>
+          </div>
+          <dl class="nvda-run-metrics">
+            <div><dt>NVDA version</dt><dd id="nvda-run-version">—</dd></div>
+            <div><dt>States tested / attempted</dt><dd id="nvda-run-states">0</dd></div>
+            <div><dt>Keyboard commands</dt><dd id="nvda-run-commands">0</dd></div>
+            <div><dt>Announcements captured</dt><dd id="nvda-run-announcements">0</dd></div>
+          </dl>
+          <label class="nvda-page-picker" for="nvda-state-select"><span id="nvda-state-picker-label">Tested state</span><select id="nvda-state-select"></select></label>
+          <div id="nvda-checks" class="nvda-checks" aria-label="NVDA test coverage"></div>
+          <div class="nvda-transcript-layout">
+            <ol id="nvda-transcript-list" class="nvda-transcript-list"></ol>
+            <aside><h5>Scope and review notes</h5><ul id="nvda-run-notes"></ul><div id="nvda-run-evidence"></div></aside>
+          </div>
+        </section>
+        <div class="assistive-workspace">
+          <aside class="assistive-summary">
+            <div><span>Tree states inspected</span><strong id="assistive-state-count">0</strong></div>
+            <div><span>Review warnings</span><strong id="assistive-warning-count">0</strong></div>
+            <label for="assistive-state-select">Page and interaction state<select id="assistive-state-select"></select></label>
+            <h4>What needs attention</h4>
+            <ul id="assistive-warning-list"></ul>
+          </aside>
+          <article class="assistive-sequence">
+            <div><span class="overline">Approximate announcement sequence</span><h4 id="assistive-state-title">Choose a captured state</h4><p>This preview is derived from roles, names, values, descriptions, and states exposed by Chromium. Individual screen readers may announce them differently.</p></div>
+            <ol id="assistive-announcement-list"></ol>
+          </article>
+        </div>
+      </section>
+
       <section class="tab-panel" role="tabpanel" id="panel-vpat" aria-labelledby="tab-vpat" hidden>
-        <div class="vpat-heading"><div><span class="overline">Conformance matrix</span><h3>VPAT / ACR draft</h3><p>Machine-generated language for legal and accessibility review.</p></div><a class="button primary" id="csv-export-secondary" href="#">Download CSV</a></div>
-        <div class="table-wrap"><table><thead><tr><th>Success criterion</th><th>Level</th><th>Conformance</th><th>Issues</th><th>Remarks</th></tr></thead><tbody id="vpat-body"></tbody></table></div>
+        <div class="vpat-heading"><div><span class="overline">Evidence and human review</span><h3>VPAT / ACR working draft</h3><p id="audit-description">Automated findings are inputs to an audit, not conformance decisions.</p></div><div class="audit-exports"><a class="button secondary" id="html-export" href="#">Download draft HTML</a><a class="button primary" id="csv-export-secondary" href="#">Download CSV</a></div></div>
+        <p class="audit-notice" id="audit-notice"></p>
+        <div class="audit-summary" id="audit-summary" aria-label="Audit review progress"></div>
+        <details class="audit-scope"><summary>Scope and limitations</summary><div id="audit-scope"></div></details>
+        <section class="vpat-export" id="vpat-export" aria-labelledby="vpat-export-title">
+          <h4 id="vpat-export-title">VPAT 2.5 export</h4>
+          <p class="form-note">Produces a VPAT&reg; 2.5-structured Accessibility Conformance Report. Rows without a documented reviewer decision show &ldquo;Not Evaluated&rdquo; and the file is marked DRAFT until every row is decided.</p>
+          <form id="vpat-profile-form" class="vpat-profile-form">
+            <label>Product name<input id="vpat-product" maxlength="200"></label>
+            <label>Product version<input id="vpat-version" maxlength="100"></label>
+            <label>Report date<input id="vpat-date" type="date"></label>
+            <label>Contact information<input id="vpat-contact" maxlength="1000" placeholder="Accessibility contact email or URL"></label>
+            <label class="audit-wide">Product description<textarea id="vpat-description" maxlength="4000" rows="2"></textarea></label>
+            <label class="audit-wide">Evaluation methods used<textarea id="vpat-methods" maxlength="4000" rows="2" placeholder="Leave blank to describe the automated and manual methods recorded in this report"></textarea></label>
+            <label class="audit-wide">Notes<textarea id="vpat-notes" maxlength="4000" rows="2"></textarea></label>
+            <div class="audit-form-actions audit-wide"><button class="button secondary" type="submit">Save product details</button></div>
+          </form>
+          <div class="vpat-download">
+            <label>Edition<select id="vpat-edition"><option value="wcag">WCAG</option><option value="508">Revised Section 508</option><option value="eu">EU (EN 301 549)</option><option value="int">International (WCAG + 508 + EN 301 549)</option></select></label>
+            <a class="button secondary" id="vpat-download-html" href="#">Download HTML</a>
+            <a class="button secondary" id="vpat-download-docx" href="#">Download Word</a>
+          </div>
+          <p id="vpat-export-message" role="status" aria-live="polite"></p>
+          <details class="audit-scope"><summary>Section 508 and EN 301 549 rows (<span id="vpat-rows-pending">0</span> need a decision)</summary>
+            <div class="table-wrap"><table><caption class="visually-hidden">Section 508 and EN 301 549 rows</caption><thead><tr><th scope="col">Row</th><th scope="col">Standard</th><th scope="col">Decision</th><th scope="col">Remarks</th></tr></thead><tbody id="vpat-rows-body"></tbody></table></div>
+          </details>
+        </section>
+        <section class="vpat-export compliance-checklists" id="compliance-checklists" aria-labelledby="compliance-title" hidden>
+          <h4 id="compliance-title">Regulatory checklists</h4>
+          <p class="form-note">GIGW 3.0 and SEBI digital accessibility requirements, paraphrased from public sources, plus any checklist you import. Each requirement needs a documented reviewer decision; related WCAG results from this scan are shown for reference and never decide an item.</p>
+          <p class="audit-notice" id="compliance-notice"></p>
+          <div class="vpat-download">
+            <label>Checklist<select id="compliance-set"></select></label>
+            <a class="button secondary" id="compliance-export" href="#">Download checklist CSV</a>
+          </div>
+          <p class="form-note" id="compliance-summary" role="status" aria-live="polite"></p>
+          <div class="table-wrap"><table><caption class="visually-hidden">Checklist requirements and decisions</caption><thead><tr><th scope="col">Reference</th><th scope="col">Requirement</th><th scope="col">Related WCAG in this scan</th><th scope="col">Decision</th></tr></thead><tbody id="compliance-body"></tbody></table></div>
+          <details class="audit-scope"><summary>Import a checklist (for example your licensed IS 17802 checklist)</summary>
+            <form id="compliance-import-form" class="vpat-profile-form">
+              <p class="form-note audit-wide">IS 17802 is a paid BIS standard, so its clauses are not built in. Paste CSV with a header row containing reference and requirement, and optionally title, category, wcag, verification and source. Separate several WCAG criteria with semicolons.</p>
+              <label>Checklist id<input id="compliance-import-id" required maxlength="61" placeholder="is-17802-part-1"></label>
+              <label>Title<input id="compliance-import-title" required maxlength="200" placeholder="IS 17802 (Part 1): 2021"></label>
+              <label class="audit-wide">CSV<textarea id="compliance-import-csv" rows="5" required></textarea></label>
+              <div class="audit-form-actions audit-wide"><button class="button secondary" type="submit">Import checklist</button></div>
+            </form>
+            <p id="compliance-import-message" role="status" aria-live="polite"></p>
+          </details>
+        </section>
+        <section id="financial-review-workspace" class="financial-review-workspace" aria-labelledby="financial-review-title" hidden>
+          <div class="financial-review-heading"><div><span class="overline">Guided financial scenarios</span><h4 id="financial-review-title">BFSI / Capital Markets evidence workbook</h4><p>Document approved human tests of financial workflows. These controls record evidence; they do not execute transactions.</p></div><span class="status-chip" id="financial-readiness-status"></span></div>
+          <p id="financial-review-notice" class="form-note"></p>
+          <p id="financial-completion-notice" class="form-note"></p>
+          <p id="financial-safety-notice" class="audit-notice"></p>
+          <div id="financial-review-summary" class="audit-summary" aria-label="Recorded financial scenario reviews — not a compliance score"></div>
+          <details class="audit-scope"><summary>What remains before this workbook is reviewed</summary><ul id="financial-review-blockers"></ul></details>
+          <p class="form-note">Scenario decisions do not automatically change WCAG conformance. Professional BFSI experience, auditor qualifications and regulatory approval are not established by this workbook.</p>
+          <div id="financial-journeys" class="financial-journeys"></div>
+        </section>
+        <div class="table-wrap"><table><thead><tr><th>Success criterion</th><th>Level</th><th>Conformance</th><th>Findings / observations</th><th>Remarks and review</th></tr></thead><tbody id="vpat-body"></tbody></table></div>
+        <h4 class="audit-checklist-heading">Required human review</h4><p class="form-note">Record actual tests and evidence. Completing a checklist item does not automatically mark its WCAG criteria as supported.</p>
+        <div id="audit-checklist" class="audit-checklist"></div>
+        <form id="audit-review-form" class="audit-review-form" hidden>
+          <h4 id="audit-review-title">Record review</h4>
+          <input id="audit-review-kind" type="hidden"><input id="audit-review-target" type="hidden">
+          <label>Decision<select id="audit-review-status" required></select></label>
+          <label>Reviewer<input id="audit-review-reviewer" maxlength="200" required autocomplete="name"></label>
+          <fieldset id="audit-financial-execution" class="audit-wide audit-financial-execution" hidden disabled>
+            <legend>Financial test execution record</legend>
+            <p class="form-note audit-wide" id="audit-financial-step-safety"></p>
+            <label>Test environment<select id="audit-execution-environment"><option value="">Choose the actual environment</option><option value="sandbox">Sandbox</option><option value="staging">Staging</option><option value="production-read-only">Production — read-only observation</option></select></label>
+            <label>Application build / version<input id="audit-execution-version" maxlength="200" placeholder="Build or release tested"></label>
+            <label>Browser and operating system<input id="audit-execution-browser" maxlength="300" placeholder="Browser version and OS version"></label>
+            <label>Assistive technology / test method<input id="audit-execution-at" maxlength="300" placeholder="NVDA version; keyboard-only; or other actual method"></label>
+            <label class="audit-wide">Test authorization reference<input id="audit-execution-authorization" maxlength="1000" placeholder="Approved test plan, ticket or authorization reference — no credentials"></label>
+            <fieldset class="audit-wide audit-finding-fieldset"><legend>Link existing findings (optional)</legend><p class="form-note">Select findings from this report that support this review. Leave empty when none apply. Linking does not resolve or change a finding.</p><div id="audit-financial-findings" class="audit-financial-findings"></div></fieldset>
+          </fieldset>
+          <label class="audit-wide">Tested scope and environment<textarea id="audit-review-scope" maxlength="4000" required placeholder="Build/version, pages/states, journey, browser, OS, assistive technology and exclusions"></textarea></label>
+          <label class="audit-wide">Findings and rationale<textarea id="audit-review-notes" maxlength="10000" required></textarea></label>
+          <label class="audit-wide">Evidence references — one per line<textarea id="audit-review-evidence" required placeholder="Test case or document reference, evidence path, or controlled evidence URL. Do not include passwords, tokens or customer data."></textarea></label>
+          <p class="form-note audit-wide">This app records the reviewer name you enter; it does not verify identity or qualifications. New entries are appended. Original scan evidence and earlier decisions are retained.</p>
+          <div class="audit-form-actions audit-wide"><button class="button primary" type="submit">Save review entry</button><button class="button secondary" id="audit-review-cancel" type="button">Cancel</button></div>
+        </form>
+        <p id="audit-review-message" role="status" aria-live="polite"></p>
+        <details class="audit-scope"><summary>Review history</summary><ol id="audit-history"></ol></details>
+      </section>
+      <section class="tab-panel" role="tabpanel" id="panel-remediation" aria-labelledby="tab-remediation" hidden>
+        <div class="vpat-heading"><div><span class="overline">Fix tracking across scans</span><h3>Remediation backlog</h3><p id="remediation-description">Confirmed findings for this site are added automatically after each scan. Items found again after being marked fixed are reopened. An item missing from a later scan is flagged for you to verify; it is never closed automatically.</p></div>
+          <a class="button secondary" id="remediation-export" href="#">Export CSV</a></div>
+        <div class="audit-summary" id="remediation-summary" aria-label="Backlog status counts"></div>
+        <div class="remediation-toolbar">
+          <label>Show<select id="remediation-filter"><option value="open">Open items</option><option value="verify">Not found in latest scan — verify</option><option value="closed">Closed items</option><option value="all">All items</option></select></label>
+          <button class="button secondary" id="remediation-sync" type="button">Add this report's findings</button>
+        </div>
+        <p id="remediation-message" role="status" aria-live="polite"></p>
+        <div class="table-wrap"><table class="remediation-table"><caption class="visually-hidden">Remediation backlog items</caption><thead><tr><th scope="col">Issue</th><th scope="col">Where</th><th scope="col">Latest scan</th><th scope="col">Status and owner</th><th scope="col">Notes</th></tr></thead><tbody id="remediation-body"></tbody></table></div>
       </section>
     </section>
 
@@ -255,7 +449,7 @@
       </section>
     </section>
   </main>
-  <footer><span>Clarity agent</span><p>Automated results require human validation before declaring conformance.</p></footer>
+  <footer><span>RAMBO <span class="footer-divider">/</span> Accessibility studio</span><p>Automated results require human validation before declaring conformance.</p></footer>
   <script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -2,7 +2,6 @@ import http from "node:http";
 import { createBrowserSession, ensureAuthenticated } from "../src/browser/session.js";
 import { getConfig } from "../src/config.js";
 
-const port = 4176;
 const server = http.createServer((request, response) => {
   response.setHeader("content-type", "text/html; charset=utf-8");
   if (request.url === "/start") {
@@ -26,10 +25,15 @@ const server = http.createServer((request, response) => {
   }
 });
 
-await new Promise((resolve) => server.listen(port, "127.0.0.1", resolve));
+await new Promise((resolve, reject) => {
+  server.once("error", reject);
+  server.listen(0, "127.0.0.1", resolve);
+});
+const port = server.address().port;
 const config = getConfig({
   targetUrl: `http://127.0.0.1:${port}`,
   browserChannel: process.env.BROWSER_CHANNEL || "bundled",
+  headless: true,
   login: {
     url: `http://127.0.0.1:${port}/start`,
     username: "integration-user",
@@ -41,16 +45,17 @@ const config = getConfig({
   }
 });
 
-const session = await createBrowserSession(config);
+let session;
 try {
+  session = await createBrowserSession(config);
   await ensureAuthenticated(session, config);
   if (session.page.url() !== `http://127.0.0.1:${port}/home`) {
     throw new Error(`Unexpected final URL: ${session.page.url()}`);
   }
   console.log("Two-stage Chromium authentication flow passed.");
 } finally {
-  await session.close();
-  await new Promise((resolve) => server.close(resolve));
+  try { await session?.close(); }
+  finally { await new Promise((resolve) => server.close(resolve)); }
 }
 
 function page(body) {

@@ -1,14 +1,30 @@
-const SENSITIVE_QUERY_KEYS = /^(?:code|state|session_state|access_token|id_token|token|oauth_token|oauth_verifier|code_challenge|code_verifier|nonce|samlresponse|relaystate)$/i;
+const SENSITIVE_QUERY_KEYS = /^(?:code|state|session_state|access_token|refresh_token|id_token|token|oauth_token|oauth_verifier|code_challenge|code_verifier|nonce|samlresponse|relaystate)$/i;
+
+function removeSensitiveParameters(parameters) {
+  for (const key of [...parameters.keys()]) {
+    if (SENSITIVE_QUERY_KEYS.test(key)) parameters.delete(key);
+  }
+}
 
 export function sanitizeUrl(value) {
   try {
     const url = new URL(value);
     if (!["http:", "https:"].includes(url.protocol)) return null;
-    for (const key of [...url.searchParams.keys()]) {
-      if (SENSITIVE_QUERY_KEYS.test(key)) url.searchParams.delete(key);
+    url.username = "";
+    url.password = "";
+    removeSensitiveParameters(url.searchParams);
+    if (/^#(?:!\/|\/)/.test(url.hash)) {
+      const queryIndex = url.hash.indexOf("?");
+      if (queryIndex !== -1) {
+        const route = url.hash.slice(0, queryIndex);
+        const parameters = new URLSearchParams(url.hash.slice(queryIndex + 1));
+        removeSensitiveParameters(parameters);
+        url.hash = `${route}${parameters.size ? `?${parameters}` : ""}`;
+      }
+    } else {
+      url.hash = "";
     }
-    if (!/^#(?:!\/|\/)/.test(url.hash)) url.hash = "";
-    return url.href.replace(/\/$/, "");
+    return url.search || url.hash ? url.href : url.href.replace(/\/$/, "");
   } catch {
     return null;
   }

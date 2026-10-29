@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
+import { startDashboardFixture } from "./helpers/dashboard-fixture.js";
 
-const baseUrl = "http://127.0.0.1:4173";
-const browser = await chromium.launch({ headless: true });
+const fixture = await startDashboardFixture();
+const { baseUrl } = fixture;
+let browser;
 try {
+  browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   const listResponse = await page.request.get(`${baseUrl}/api/reports`);
   assert.equal(listResponse.status(), 200);
@@ -85,5 +88,6 @@ try {
   assert.equal(await page.locator("#comparison-shell").isVisible(), false);
   console.log("Dedicated report comparison dashboard, reset across applications, saved evidence screenshots, separate crawl graphs, delta filters, and cross-site guard passed.");
 } finally {
-  await browser.close();
+  await browser?.close();
+  await fixture.close();
 }

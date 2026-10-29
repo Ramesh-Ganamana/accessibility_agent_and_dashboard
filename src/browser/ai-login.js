@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { prepareActionExclusions } from "./action-exclusions.js";
 
 const SAFE_ACTIONS = new Set(["fill_username", "fill_password", "click", "click_login_entry", "click_auth_continue", "user_action_required", "none"]);
 const DANGEROUS_TEXT = /sign\s*up|create account|delete|remove|purchase|pay|transfer|forgot password|reset password/i;
@@ -70,11 +71,12 @@ export function isControlCompatible(action, control) {
   const type = String(control.type || "").toLowerCase();
   const role = String(control.role || "").toLowerCase();
   const tag = String(control.tag || "").toLowerCase();
-  const semantics = `${control.id || ""} ${control.name || ""} ${control.placeholder || ""} ${control.ariaLabel || ""} ${control.label || ""} ${control.nearbyText || ""}`;
   const fillable = ["input", "textarea", "select"].includes(tag) || role === "textbox" || Boolean(control.contentEditable);
   const nonTextInput = ["button", "submit", "reset", "checkbox", "radio", "file", "image", "hidden"].includes(type);
   if (action === "fill_username") return fillable && !nonTextInput && type !== "password";
-  if (action === "fill_password") return fillable && !nonTextInput && (type === "password" || /password|passcode|secret/i.test(semantics));
+  // Nearby text such as "Forgot password?" must never make a visible text box
+  // eligible for the password: only a masked password input qualifies.
+  if (action === "fill_password") return tag === "input" && type === "password";
   if (["click", "click_login_entry", "click_auth_continue"].includes(action)) {
     return ["button", "a"].includes(tag) || role === "button" || ["button", "submit", "image"].includes(type);
   }
@@ -99,6 +101,9 @@ export async function detectSecurityChallenge(page) {
 }
 
 async function collectSanitizedInventory(page) {
+  // Controls on the Do not click list are never offered to the model, so login
+  // can continue with another control instead of picking a listed one.
+  await prepareActionExclusions(page);
   const controls = [];
   const frames = page.frames();
   for (let frameIndex = 0; frameIndex < frames.length; frameIndex += 1) {
@@ -108,6 +113,7 @@ async function collectSanitizedInventory(page) {
       const text = (value, limit = 180) => String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
       const inspect = (element) => {
         if (!element.matches?.(controlSelector) || results.length >= 120) return;
+        if (window.__clarityActionExclusions?.matches(element)) return;
         const rect = element.getBoundingClientRect();
         const style = getComputedStyle(element);
         if (rect.width < 2 || rect.height < 2 || style.visibility === "hidden" || style.display === "none") return;
@@ -152,9 +158,19 @@ async function collectSanitizedInventory(page) {
     }, { frameIndex }).catch(() => []);
     controls.push(...frameControls);
   }
+  // Labels and surrounding text can include names, emails or account numbers;
+  // scrub every free-text field before it leaves the machine.
+  const scrubbed = controls.slice(0, 180).map((control) => ({
+    ...control,
+    placeholder: scrub(control.placeholder),
+    ariaLabel: scrub(control.ariaLabel),
+    label: scrub(control.label),
+    nearbyText: scrub(control.nearbyText),
+    text: scrub(control.text)
+  }));
   return {
     page: { urlOrigin: safeOrigin(page.url()), title: scrub(await page.title()).slice(0, 180) },
-    controls: controls.slice(0, 180)
+    controls: scrubbed
   };
 }
 

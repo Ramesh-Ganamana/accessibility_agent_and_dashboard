@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 import { discoverNavigationActions } from "../src/scanner/discovery.js";
+import { inventorySafeActions } from "../src/scanner/actions.js";
+import { scanKeyboardFocus } from "../src/scanner/focus.js";
 import { hasVisibleBusyState, isPageVisiblyReady, waitForPageReady } from "../src/browser/readiness.js";
 
 const browser = await chromium.launch({ headless: true });
@@ -20,6 +22,32 @@ try {
   assert.ok(actions.some((action) => action.url === "https://application.test/reports" && action.label === "Employee reports"));
   assert.ok(actions.some((action) => action.url === "https://application.test/help" && action.popup));
   assert.ok(actions.some((action) => action.url === "https://application.test/profile" && action.label === "My profile"));
+
+  await page.setContent(`
+    <a href="https://application.test/logout">Exit session</a>
+    <a href="https://application.test/setting">Deactivate account</a>
+    <a href="https://application.test/provider">Excluded provider</a>
+    <a href="https://application.test/reports">Open reports</a>
+    <button>View details</button>
+    <form id="edit"><button>Continue</button></form>
+    <button form="edit">Next</button>
+    <form><button><span role="button">Continue nested submission</span></button></form>
+    <label><input type="checkbox"><span role="button">Open preference switch</span></label>
+    <div role="switch"><span role="button">View switch preference</span></div>
+    <button disabled><span role="button">View disabled details</span></button>
+  `);
+  const safeRoutes = await discoverNavigationActions(page, "https://application.test/", { excludeLabels: ["Excluded provider"] });
+  assert.deepEqual(safeRoutes.map((action) => action.label), ["Open reports"], "URL discovery must apply the same safety and exclusion policy as clicking");
+  const safeControls = await inventorySafeActions(page);
+  assert.ok(safeControls.some((action) => action.label === "View details"), "a button with default type outside any form does not submit a form");
+  assert.equal(safeControls.some((action) => ["Continue", "Next", "Deactivate account", "Exit session"].includes(action.label)), false);
+  assert.equal(safeControls.some((action) => /nested submission|preference switch|switch preference|disabled details/.test(action.label)), false, "child spans must not bypass form/control restrictions");
+
+  await page.setContent('<style>button:focus{outline:none;box-shadow:none}</style><h1>Focus paths</h1><section><button>First</button></section><section><button>Second</button></section>');
+  const focusFindings = await scanKeyboardFocus(page, "https://application.test/", 6);
+  assert.equal(focusFindings.length, 2, "same-tag controls in different parents must not prematurely stop focus traversal");
+  assert.equal(new Set(focusFindings.map((finding) => JSON.stringify(finding.target))).size, 2);
+  for (const finding of focusFindings) assert.equal(await page.locator(finding.target[0]).count(), 1, "focus targets must uniquely resolve to the observed element");
 
   await page.setContent('<div class="application-loading"><span>Loading..</span></div><main hidden><h1>Ready</h1></main><script>setTimeout(() => { document.querySelector(".application-loading").remove(); document.querySelector("main").hidden = false; }, 700)</script>');
   const started = Date.now();

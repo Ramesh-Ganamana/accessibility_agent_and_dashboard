@@ -1,0 +1,1461 @@
+# Superseded by docs/openapi.json (served at /api/openapi.json, Swagger UI at /api-docs).
+# Kept as an earlier snapshot; it is not maintained. See docs/api-inventory.md for its known gaps.
+openapi: 3.0.3
+info:
+  title: RAMBO Accessibility Agent - Dashboard API
+  version: 1.0.0
+  description: |
+    Existing local dashboard API, documented from the source on 2026-10-28.
+    This specification does not add endpoints or change application behavior.
+
+    Run the existing backend with npm start. It binds to 127.0.0.1 and defaults
+    to port 4173 (PORT can override it). No API authentication or CORS middleware
+    is implemented. Use a same-origin frontend or a development proxy for both
+    /api and /reports. A remotely hosted Swagger Editor cannot directly call
+    this loopback API through the browser under the current origin policy.
+
+    Requests addressed to an unapproved Host receive 421. Mutating requests
+    carrying an unapproved Origin hostname receive 403. The default allowed
+    hostnames are localhost, 127.0.0.1 and [::1]; DASHBOARD_ALLOWED_HOSTS can add
+    hostnames. This is a local development API, not a deployed multi-user service.
+    JSON bodies have a 1 MB limit. Malformed JSON produces 400; oversized bodies
+    produce 413. JSON errors have the shape {error: string}. Unmatched Express
+    routes may return an HTML 404 rather than this JSON shape.
+
+    Scan and journey POSTs start real work and return 202 with an in-memory job.
+    Poll GET /api/jobs/{id}; terminal states are complete, stopped and failed.
+    A completed job does not mean the website passed accessibility testing.
+    Report sections describe observed coverage; scores and exports are not
+    certification or a regulatory compliance determination.
+
+    Response models allow additional properties for historical reports and
+    engine-specific evidence. Missing optional fields must not be treated as
+    passed checks. No pagination, cancellation, report deletion, login-session
+    management, streaming progress or arbitrary journey upload endpoint exists.
+servers:
+  - url: http://localhost:4173
+    description: Local dashboard; change the port if PORT was configured differently
+security: []
+tags:
+  - {name: Health, description: Backend availability and configured capabilities}
+  - {name: Scans, description: Start scans and poll scan or journey jobs}
+  - {name: Reports, description: Saved reports and report-tab data}
+  - {name: Reviews, description: Documented reviewer decisions and VPAT profile}
+  - {name: Exports, description: Download report and VPAT files}
+  - {name: Compliance, description: Checklist imports and recorded report decisions}
+  - {name: Remediation, description: Persistent backlog per application hostname}
+  - {name: Journeys, description: Run existing local journey definitions}
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      summary: Get backend health and capabilities
+      description: NVDA availability is a configuration check, not proof that a live speech test succeeded.
+      responses:
+        '200':
+          description: Backend is reachable
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Health'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/scans:
+    post:
+      tags: [Scans]
+      operationId: startScan
+      summary: Start an accessibility scan
+      description: |
+        Starts browser automation. Request NVDA only on a prepared Windows desktop;
+        it can open and focus a visible browser and speak. AI requires server-side
+        configuration as well as this request's opt-in. See health capabilities.
+        Credentials belong to the website under test, not API authentication.
+        A 202 acknowledges job creation; later browser/login/NVDA failures are
+        recorded in job/report data. There is no idempotency key: do not blindly
+        repeat a POST if its response is lost.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ScanRequest'}
+            examples:
+              standard:
+                summary: Public website, no AI or NVDA
+                value:
+                  targetUrl: https://app.example.test/
+                  maxPages: 5
+                  maxStates: 20
+                  maxDepth: 2
+                  aiEnabled: false
+                  screenReaders: {nvda: false}
+                  device: desktop
+                  audit: {profile: general, wcagVersion: '2.2', level: AA}
+                  excludeActionLabels: [Delete account, Pay now, '#dangerous-action']
+                  auth: {enabled: false}
+              authenticated:
+                summary: Synthetic login example; supply local test credentials at runtime
+                value:
+                  targetUrl: https://app.example.test/dashboard
+                  maxPages: 1
+                  maxStates: 10
+                  screenReaders: {nvda: false}
+                  auth:
+                    enabled: true
+                    loginUrl: https://app.example.test/login
+                    username: test-user@example.test
+                    password: REPLACE_LOCALLY
+                    persist: false
+                    aiEnabled: false
+      responses:
+        '202': {$ref: '#/components/responses/JobAccepted'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/ForbiddenOrigin'}
+        '413': {$ref: '#/components/responses/BodyTooLarge'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/jobs/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+        description: Job ID returned by scan or journey creation; different from a report ID
+        example: job-demo-1234
+    get:
+      tags: [Scans]
+      operationId: getJob
+      summary: Poll a scan or journey job
+      description: |
+        Poll about once per second with backoff on connection failures. Jobs are
+        in memory and disappear on backend restart. Terminal jobs older than
+        24 hours are pruned when a new scan is created. Use saved reports for history.
+        reportId may become available before completion; that report is partial.
+      responses:
+        '200':
+          description: Current job snapshot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Job'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports:
+    get:
+      tags: [Reports]
+      operationId: listReports
+      summary: List saved report summaries
+      description: |
+        Returns a raw array, newest startedAt first. No pagination or server-side
+        filters. A stored in-progress report with no queued/running job is returned
+        as interrupted. This runtime status adjustment does not rewrite its file.
+      responses:
+        '200':
+          description: Saved reports; an empty array when none are available
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/ReportListing'}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReport
+      summary: Read a complete report object
+      description: |
+        Includes evidence, audit, criteria and review history. Can be large; use
+        section endpoints for individual screens. Applies the same interrupted
+        runtime status adjustment as the report list. Optional fields vary by scan
+        age and configured engines; this is not a fixed flat issue list.
+      responses:
+        '200': {$ref: '#/components/responses/Report'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/overview:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportOverview
+      summary: Get overview data
+      description: This section has no report status property. Read the report or listing for runtime status.
+      responses:
+        '200':
+          description: Overview and derived assessment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Overview'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/score:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportScore
+      summary: Get observed accessibility health score
+      description: A coverage-dependent heuristic, not a WCAG pass percentage or conformance decision.
+      responses:
+        '200':
+          description: Assessment; score is null when unavailable
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Assessment'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/issues:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportIssues
+      summary: Get confirmed, review and best-practice findings
+      responses:
+        '200':
+          description: Three separate finding arrays
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [confirmed, needsReview, bestPractices]
+                properties:
+                  confirmed: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+                  needsReview: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+                  bestPractices: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/pages:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportPages
+      summary: Get page results and observed states
+      responses:
+        '200':
+          description: Object containing the pages array
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [pages]
+                properties:
+                  pages: {type: array, items: {$ref: '#/components/schemas/Page'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/graph:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportGraph
+      summary: Get crawl graph
+      responses:
+        '200':
+          description: Graph with nodes and edges
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Graph'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/activity:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportActivity
+      summary: Get saved activity events
+      responses:
+        '200':
+          description: Saved report events, rather than an event stream
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events: {type: array, items: {$ref: '#/components/schemas/Event'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/acr:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportAcr
+      summary: Get WCAG conformance rows
+      responses:
+        '200':
+          description: Object containing rows; unreviewed criteria remain Not Evaluated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [rows]
+                properties:
+                  rows: {type: array, items: {$ref: '#/components/schemas/Criterion'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/audit:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportAudit
+      summary: Get audit workspace
+      responses:
+        '200':
+          description: Raw audit object with criteria, checks, scope and review history
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Audit'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/financial:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportFinancial
+      summary: Get financial guided-review workspace
+      description: Returns JSON null for general-profile reports. This endpoint does not execute financial transactions.
+      responses:
+        '200':
+          description: Financial workspace or null
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/FinancialAssessment'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/reviews:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reviews]
+      operationId: listReportReviews
+      summary: Get appended review history
+      responses:
+        '200':
+          description: Raw array of saved reviews
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/SavedReview'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Reviews]
+      operationId: appendReportReview
+      summary: Append a documented reviewer decision
+      description: |
+        Appends history; does not delete automated findings. Obtain target IDs
+        from audit.criteria, audit.checks, audit.vpatRows, financial journey steps
+        or compliance items' targetId. Status values depend on kind.
+        All decisions require reviewer, scope, notes and 1-30 evidence references.
+        References are text, not file uploads. This API does not authenticate or
+        independently verify the reviewer or evidence. A criterion with confirmed
+        findings cannot be marked Supports or Not Applicable. Financial steps have
+        additional execution-context and linked-finding constraints.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReviewRequest'}
+      responses:
+        '201':
+          description: Updated full report, not only the new review
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Report'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/ForbiddenOrigin'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '413': {$ref: '#/components/responses/BodyTooLarge'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/evidence:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getReportEvidence
+      summary: Get grouped finding screenshot references
+      description: |
+        Uses relative /reports/... URLs served by the running backend. evidenceUrl
+        can be null when a path is not supported by this section's validation.
+        This groups finding screenshots; NVDA evidence is in assistive-technology
+        run data. A reference does not guarantee that an artifact still exists.
+      responses:
+        '200':
+          description: Screenshot groups and findings without screenshot references
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/EvidenceSection'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/assistive-technology:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reports]
+      operationId: getAssistiveTechnology
+      summary: Get browser accessibility-tree and actual screen-reader results
+      description: |
+        Tree states are separate from actual NVDA execution. Inspect runs.NVDA
+        status, outcome, coverage, per-state results and reasons; never infer a
+        passing screen-reader test solely from health availability or job completion.
+        Not-run, blocked, partial and stopped coverage must remain visible in the UI.
+      responses:
+        '200':
+          description: Assistive-technology section
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AssistiveTechnologySection'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/compare/{previousId}:
+    parameters:
+      - {$ref: '#/components/parameters/ReportId'}
+      - name: previousId
+        in: path
+        required: true
+        schema: {type: string, pattern: '^[a-zA-Z0-9_-]+$'}
+        description: Different report with completedAt and an earlier startedAt
+    get:
+      tags: [Reports]
+      operationId: compareReports
+      summary: Compare two reports from the same hostname
+      description: |
+        Both reports need completedAt, distinct IDs and valid ordered startedAt
+        timestamps. Different hostnames produce 409. The fixed group means a
+        previously observed finding was absent in comparable scan coverage;
+        it is not independent human verification or a conformance claim.
+      responses:
+        '200':
+          description: New, fixed and unresolved groups with coverage exclusions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Comparison'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/exports/{format}:
+    parameters:
+      - {$ref: '#/components/parameters/ReportId'}
+      - name: format
+        in: path
+        required: true
+        schema: {type: string, enum: [json, csv, html]}
+    get:
+      tags: [Exports]
+      operationId: exportReport
+      summary: Download report JSON or ACR CSV/HTML
+      description: No PDF format is implemented. JSON returns the full report; CSV/HTML render the ACR export.
+      responses:
+        '200':
+          description: Attachment named accessibility-draft-{id}.{format}
+          headers:
+            Content-Disposition: {schema: {type: string}, description: Attachment filename}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Report'}
+            text/csv:
+              schema: {type: string}
+            text/html:
+              schema: {type: string}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/vpat-profile:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Reviews]
+      operationId: getVpatProfile
+      summary: Read saved VPAT product metadata
+      responses:
+        '200':
+          description: Saved profile or an empty object when not yet saved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VpatProfile'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Reviews]
+      operationId: saveVpatProfile
+      summary: Replace VPAT product metadata
+      description: Missing supported fields become empty strings. Send the complete form to preserve existing values.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VpatProfile'}
+      responses:
+        '200':
+          description: Normalized saved profile
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VpatProfile'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/ForbiddenOrigin'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '413': {$ref: '#/components/responses/BodyTooLarge'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/vpat/{edition}/{format}:
+    parameters:
+      - {$ref: '#/components/parameters/ReportId'}
+      - name: edition
+        in: path
+        required: true
+        schema: {type: string, enum: [wcag, '508', eu, int]}
+      - name: format
+        in: path
+        required: true
+        schema: {type: string, enum: [html, docx]}
+    get:
+      tags: [Exports]
+      operationId: exportVpat
+      summary: Download a VPAT 2.5-structured report
+      description: |
+        Uses saved product metadata and documented decisions. The generated filename
+        includes DRAFT when readiness is incomplete. A generated document does not
+        independently establish WCAG, SEBI, Section 508 or EN conformance.
+      responses:
+        '200':
+          description: HTML or Word attachment
+          headers:
+            Content-Disposition: {schema: {type: string}, description: Generated VPAT filename}
+          content:
+            text/html:
+              schema: {type: string}
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: {type: string, format: binary}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/backlog/{host}:
+    parameters: [{$ref: '#/components/parameters/Host'}]
+    get:
+      tags: [Remediation]
+      operationId: getBacklog
+      summary: Read a site's remediation backlog
+      description: Returns empty items and syncedReports arrays when no backlog exists.
+      responses:
+        '200':
+          description: Backlog plus summary
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Backlog'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/backlog/{host}/export.csv:
+    parameters: [{$ref: '#/components/parameters/Host'}]
+    get:
+      tags: [Remediation, Exports]
+      operationId: exportBacklog
+      summary: Download backlog CSV
+      responses:
+        '200': {$ref: '#/components/responses/CsvAttachment'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/backlog/{host}/sync:
+    parameters: [{$ref: '#/components/parameters/Host'}]
+    post:
+      tags: [Remediation]
+      operationId: syncBacklog
+      summary: Apply a completed report to the backlog
+      description: |
+        Requires stored report status complete and matching hostname. Scans also
+        attempt this after successful completion. Reapplying an already synced report
+        is a no-op. Missing findings are not automatically marked verified.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reportId]
+              properties:
+                reportId: {type: string, pattern: '^[a-zA-Z0-9_-]+$'}
+      responses:
+        '200':
+          description: Synchronization counts
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BacklogSync'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/ForbiddenOrigin'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '413': {$ref: '#/components/responses/BodyTooLarge'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/backlog/{host}/track:
+    parameters: [{$ref: '#/components/parameters/Host'}]
+    post:
+      tags: [Remediation]
+      operationId: trackFinding
+      summary: Add one report finding to the backlog
+      description: |
+        May track confirmed, needs-review or best-practice findings. Uses the
+        finding's report ID, not its rule ID. Requires a matching hostname.
+        Returns the existing item if its backlog key is already tracked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reportId, findingId]
+              properties:
+                reportId: {type: string, pattern: '^[a-zA-Z0-9_-]+$'}
+                findingId: {type: string}
+      responses:
+        '201':
+          description: Tracked backlog item, including when it already existed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BacklogItem'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/ForbiddenOrigin'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '413': {$ref: '#/components/responses/BodyTooLarge'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/backlog/{host}/items/{key}:
+    parameters:
+      - {$ref: '#/components/parameters/Host'}
+      - name: key
+        in: path
+        required: true
+        schema: {type: string}
+        description: Backlog item key returned by the API; different from a finding ID
+    patch:
+      tags: [Remediation]
+      operationId: updateBacklogItem
+      summary: Update ownership, status, due date or notes
+      description: |
+        Omitted fields are preserved. Cannot set verified while latestScan is
+        present. note records the reason for a status change; notes is the item's
+        editable notes field. String fields are sanitized and truncated to their limits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/BacklogUpdate'}
+      responses:
+        '200':
+          description: Updated item
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/BacklogItem'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/ForbiddenOrigin'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '413': {$ref: '#/components/responses/BodyTooLarge'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/journeys:
+    get:
+      tags: [Journeys]
+      operationId: listJourneys
+      summary: List local journey JSON files
+      responses:
+        '200':
+          description: Raw array; invalid definitions carry valid false and error
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/JourneyListing'}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/journeys/run:
+    post:
+      tags: [Journeys]
+      operationId: runJourney
+      summary: Start a journey already present in the journeys folder
+      description: |
+        Runs real browser actions defined in the selected file. No definition upload
+        is supported here. The scan form's audit/login/NVDA/budget settings are not
+        copied into this request. Server configuration and the journey file determine
+        execution. Poll its job using the same endpoint as scans.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, pattern: '^[\w.-]+\.json$', description: Filename returned by GET /api/journeys}
+                excludeActionLabels: {$ref: '#/components/schemas/ActionExclusions'}
+      responses:
+        '202': {$ref: '#/components/responses/JobAccepted'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/ForbiddenOrigin'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '413': {$ref: '#/components/responses/BodyTooLarge'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/compliance/sets:
+    get:
+      tags: [Compliance]
+      operationId: listComplianceSets
+      summary: List built-in and imported checklist metadata
+      description: sets[].items is a number here, not the full item array.
+      responses:
+        '200':
+          description: Catalog metadata and checklist item counts
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ComplianceCatalog'}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Compliance]
+      operationId: importComplianceSet
+      summary: Import a checklist from JSON items or CSV text
+      description: |
+        Both formats use application/json, not multipart/form-data. Importing an
+        existing custom ID replaces that set; built-in IDs cannot be replaced.
+        Server generates item IDs from reference and row position. Retrieve new
+        targetId values from the report's compliance section after import.
+        Text fields are sanitized/truncated. The source regex accepts 2-61 ID
+        characters although its validation error message says 2-60.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ChecklistImport'}
+            examples:
+              jsonItems:
+                value:
+                  id: team-review
+                  title: Team review checklist
+                  publisher: Internal QA
+                  items:
+                    - reference: TEAM-1
+                      title: Review the login journey
+                      requirement: Record keyboard and screen-reader observations for the test login.
+                      wcag: ['2.1.1']
+              csvText:
+                value:
+                  id: team-review-csv
+                  title: Team review checklist
+                  format: csv
+                  csv: "reference,title,requirement,wcag\nTEAM-1,Login,Record keyboard observations,2.1.1\n"
+      responses:
+        '201':
+          description: Imported set identifier, title and item count
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, title, items]
+                properties:
+                  id: {type: string}
+                  title: {type: string}
+                  items: {type: integer}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/ForbiddenOrigin'}
+        '413': {$ref: '#/components/responses/BodyTooLarge'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/compliance:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Compliance]
+      operationId: getReportCompliance
+      summary: Get full checklists and report-specific review decisions
+      description: Record decisions with POST /api/reports/{id}/reviews and kind compliance-item. Findings alone do not mark requirements met.
+      responses:
+        '200':
+          description: Catalog with full items, target IDs, related WCAG and per-set summaries
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ReportCompliance'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+  /api/reports/{id}/compliance/export.csv:
+    parameters: [{$ref: '#/components/parameters/ReportId'}]
+    get:
+      tags: [Compliance, Exports]
+      operationId: exportReportCompliance
+      summary: Download all checklist decisions for a report
+      description: UTF-8 CSV with BOM. Exports every set in this report view; there is no selected-set query filter.
+      responses:
+        '200': {$ref: '#/components/responses/CsvAttachment'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        default: {$ref: '#/components/responses/Error'}
+components:
+  parameters:
+    ReportId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, pattern: '^[a-zA-Z0-9_-]+$'}
+      description: Saved report ID from the job or GET /api/reports; not a job ID
+      example: 2026-10-28T09-00-00-000Z-demo
+    Host:
+      name: host
+      in: path
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9.-]+$'}
+      description: Application hostname only, without scheme, port or path; normalized to lowercase
+      example: app.example.test
+  responses:
+    Error:
+      description: |
+        JSON error; includes unexpected server failures (500) and rejected Host
+        headers (421). No dashboard bearer-token authentication is implemented.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    BadRequest:
+      description: Invalid input, malformed JSON, unsupported review decision or conflicting evidence
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    ForbiddenOrigin:
+      description: Mutating request carried an Origin hostname outside the allowed list
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    BodyTooLarge:
+      description: JSON body exceeds the 1 MB parser limit
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    NotFound:
+      description: Requested report, job, journey, item, edition or format was not found
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    Conflict:
+      description: Report belongs to a different hostname or is not eligible for the requested operation
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ApiError'}
+    JobAccepted:
+      description: Job accepted; poll its id until complete, stopped or failed
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Job'}
+          example:
+            id: job-demo-1234
+            status: queued
+            phase: Queued
+            progress: 0
+            events: []
+            reportId: null
+            error: null
+            currentUrl: null
+            warningCount: 0
+            startedAt: '2026-10-28T09:00:00.000Z'
+            updatedAt: '2026-10-28T09:00:00.000Z'
+    Report:
+      description: Full report with derived audit and review history
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/Report'}
+    CsvAttachment:
+      description: CSV file attachment
+      headers:
+        Content-Disposition: {schema: {type: string}, description: Download filename}
+      content:
+        text/csv:
+          schema: {type: string}
+  schemas:
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string}
+      example: {error: Job not found.}
+    Health:
+      type: object
+      required: [ok, service, build, browserChannel, aiLoginAvailable, actionExclusions, nvda]
+      properties:
+        ok: {type: boolean, enum: [true]}
+        service: {type: string}
+        build: {type: string, description: Implementation build label; not an API version}
+        browserChannel: {type: string}
+        aiLoginAvailable: {type: boolean}
+        actionExclusions:
+          type: object
+          properties:
+            serverEntries: {type: array, items: {type: string}}
+        nvda:
+          type: object
+          properties:
+            available: {type: boolean}
+            configured: {type: boolean}
+            reason: {type: string, nullable: true}
+            mode: {type: string}
+            order: {type: string, enum: [during-crawl, after-crawl]}
+            recovery: {type: string}
+    ActionExclusions:
+      description: |
+        Multiple Do not click entries, merged with EXCLUDE_ACTION_LABELS. Up to
+        100 distinct entries after merging; each at most 2048 characters. Entries
+        may be labels, words/phrases, image alt text, attribute values or pairs,
+        CSS selectors or link/image URLs. Matching applies on the application
+        origin. Use an array to preserve literal commas. Strings support comma
+        and newline separation, quoted entries and escaped commas. Does not hide
+        controls from auditing or stop the application's own background activity.
+      oneOf:
+        - {type: string}
+        - type: array
+          maxItems: 100
+          items: {type: string, maxLength: 2048}
+    ScanRequest:
+      type: object
+      required: [targetUrl]
+      description: |
+        These are the supported UI request fields; extra fields do not configure
+        the engine. Send real JSON booleans and numbers. Numeric limits are
+        normalized (truncated and clamped), not always rejected with 400.
+      properties:
+        targetUrl: {type: string, format: uri, pattern: '^https?://', description: Absolute website URL}
+        maxPages: {type: integer, minimum: 1, maximum: 100, default: 10, description: Distinct page URL budget; one page can have multiple states}
+        maxStates: {type: integer, minimum: 1, maximum: 500, description: 'Combined page/state budget; omitted uses MAX_STATES (fallback 100)'}
+        maxDepth: {type: integer, minimum: 0, maximum: 8, default: 2}
+        aiEnabled: {type: boolean, default: false, description: Opt in to conditional AI; also requires server configuration}
+        excludeActionLabels: {$ref: '#/components/schemas/ActionExclusions'}
+        screenReaders:
+          type: object
+          properties:
+            nvda: {type: boolean, default: false, description: Request actual NVDA on a supported local Windows desktop}
+        device: {type: string, enum: [desktop, mobile], default: desktop, description: Mobile is Chromium viewport emulation; cannot be combined with NVDA}
+        audit: {$ref: '#/components/schemas/AuditConfiguration'}
+        auth: {$ref: '#/components/schemas/WebsiteAuth'}
+    AuditConfiguration:
+      type: object
+      properties:
+        profile: {type: string, enum: [general, financial], default: general}
+        wcagVersion: {type: string, enum: ['2.1', '2.2'], default: '2.2'}
+        level: {type: string, enum: [AA], default: AA, description: Includes level A}
+    WebsiteAuth:
+      type: object
+      description: |
+        If enabled, loginUrl, username and password are required. Credentials are
+        used for this website scan, not API authentication. Do not persist them in
+        frontend logs or shared Swagger examples. Selectors are optional overrides;
+        blank values use built-in discovery/defaults. Input strings beyond the
+        documented sizes are truncated by the current backend.
+      properties:
+        enabled: {type: boolean, default: false}
+        loginUrl: {type: string, maxLength: 2048, description: Absolute HTTP(S) login URL when enabled}
+        username: {type: string, maxLength: 512, writeOnly: true}
+        password: {type: string, maxLength: 2048, format: password, writeOnly: true}
+        persist: {type: boolean, default: true, description: Remember the authenticated session locally}
+        aiEnabled: {type: boolean, default: false, description: Opt in to login AI fallback; requires configured key}
+        postLoginValue: {type: string, maxLength: 256, description: Optional tenant/domain/workspace context}
+        emailSelector: {type: string, maxLength: 1000}
+        passwordSelector: {type: string, maxLength: 1000}
+        submitSelector: {type: string, maxLength: 1000}
+    Job:
+      type: object
+      required: [id, status, phase, progress, events, reportId, error, currentUrl, warningCount, startedAt, updatedAt]
+      properties:
+        id: {type: string}
+        status: {type: string, enum: [queued, running, complete, stopped, failed]}
+        phase: {type: string, description: Human-readable progress description; not a stable enum}
+        progress: {type: number, description: Approximate percentage; stopped/failed jobs can remain below 100}
+        events: {type: array, items: {$ref: '#/components/schemas/Event'}, description: Recent events, normally bounded to the latest 80}
+        reportId: {type: string, nullable: true}
+        error: {type: string, nullable: true}
+        currentUrl: {type: string, nullable: true}
+        warningCount: {type: integer}
+        startedAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        stoppedAt: {type: string, format: date-time}
+        stopReason: {type: string}
+    Event:
+      type: object
+      additionalProperties: true
+      properties:
+        at: {type: string, format: date-time}
+        type: {type: string}
+        message: {type: string}
+        url: {type: string}
+        reportId: {type: string}
+        current: {type: number}
+        total: {type: number}
+    ReportListing:
+      type: object
+      properties:
+        id: {type: string}
+        targetUrl: {type: string}
+        startedAt: {type: string, format: date-time}
+        completedAt: {type: string, format: date-time, nullable: true}
+        status: {type: string, description: 'Known values include complete, in-progress, interrupted, stopped, failed and unknown'}
+        summary: {type: object, additionalProperties: true}
+    Report:
+      allOf:
+        - {$ref: '#/components/schemas/ReportListing'}
+        - type: object
+          additionalProperties: true
+          properties:
+            configuration: {type: object, additionalProperties: true}
+            issues: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+            incomplete: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+            bestPractices: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+            pages: {type: array, items: {$ref: '#/components/schemas/Page'}}
+            events: {type: array, items: {$ref: '#/components/schemas/Event'}}
+            graph: {$ref: '#/components/schemas/Graph'}
+            audit: {$ref: '#/components/schemas/Audit'}
+            acr: {type: array, items: {$ref: '#/components/schemas/Criterion'}}
+            auditReviews: {type: array, items: {$ref: '#/components/schemas/SavedReview'}}
+            assistiveTechnology: {type: object, nullable: true, additionalProperties: true}
+            limitations: {type: array, items: {type: string}}
+    Overview:
+      type: object
+      properties:
+        id: {type: string}
+        targetUrl: {type: string}
+        startedAt: {type: string, format: date-time}
+        completedAt: {type: string, format: date-time, nullable: true}
+        summary: {type: object, additionalProperties: true}
+        assessment: {$ref: '#/components/schemas/Assessment'}
+    Assessment:
+      type: object
+      required: [score, outOf, grade, label, status, confidence, coverage, counts, principles, methodology]
+      properties:
+        score: {type: number, nullable: true, minimum: 0, maximum: 10}
+        outOf: {type: integer, enum: [10]}
+        grade: {type: string, enum: [A+, A, B, C, D, F, '—']}
+        label: {type: string}
+        status: {type: string, enum: [provisional, unavailable]}
+        confidence: {type: string, enum: [Limited, Coverage-dependent]}
+        coverage:
+          type: object
+          properties:
+            scannedPages: {type: integer}
+            attemptedPages: {type: integer}
+            failedPages: {type: integer}
+            observedStates: {type: integer}
+        counts:
+          type: object
+          properties:
+            confirmedIssues: {type: integer}
+            needsReview: {type: integer}
+            bestPractices: {type: integer}
+            byImpact: {type: object, additionalProperties: {type: integer}}
+        principles:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              label: {type: string}
+              score: {type: number, nullable: true}
+              confirmedIssues: {type: integer}
+        methodology: {type: object, additionalProperties: true}
+    Finding:
+      type: object
+      additionalProperties: true
+      description: Engine-specific evidence is preserved; fields may be absent in historical reports.
+      properties:
+        id: {type: string}
+        ruleId: {type: string}
+        help: {type: string}
+        helpUrl: {type: string, nullable: true}
+        description: {type: string}
+        impact: {type: string, nullable: true}
+        category: {type: string}
+        source: {type: string}
+        wcag: {type: array, items: {type: string}}
+        tags: {type: array, items: {type: string}}
+        pageUrl: {type: string}
+        frameUrl: {type: string}
+        documentUrl: {type: string, nullable: true}
+        state: {type: string}
+        target:
+          description: Selector or nested selector arrays; do not assume a plain string
+          oneOf:
+            - {type: string}
+            - {type: array, items: {}}
+        html: {type: string, description: Render as escaped text, not trusted markup}
+        failureSummary: {type: string}
+        evidence: {type: string, nullable: true}
+        contextEvidence: {type: string, nullable: true}
+        evidenceKind: {type: string}
+        alsoObservedOn: {type: array, items: {type: object, additionalProperties: true}}
+    Page:
+      type: object
+      additionalProperties: true
+      properties:
+        url: {type: string}
+        actualUrl: {type: string}
+        title: {type: string}
+        error: {type: string, nullable: true}
+        crawlStatus: {type: string}
+        baseline: {type: string, nullable: true}
+        observedStates: {type: array, items: {type: object, additionalProperties: true}}
+        screenReaderStates: {type: array, items: {type: object, additionalProperties: true}}
+        ruleOutcomes: {type: array, items: {type: object, additionalProperties: true}}
+    Graph:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            properties:
+              id: {type: string}
+              label: {type: string}
+              url: {type: string}
+              depth: {type: number}
+              status: {type: string}
+              state: {type: string}
+              issueCount: {type: number}
+        edges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            properties:
+              source: {type: string}
+              target: {type: string}
+              type: {type: string}
+              label: {type: string}
+    Criterion:
+      type: object
+      additionalProperties: true
+      properties:
+        id: {type: string}
+        criterion: {type: string}
+        level: {type: string}
+        status: {type: string, description: Includes Not Evaluated until a valid documented review exists}
+        issueCount: {type: integer}
+        review: {type: object, nullable: true, additionalProperties: true}
+        automation: {type: object, additionalProperties: {type: integer}}
+    Audit:
+      type: object
+      additionalProperties: true
+      properties:
+        profile: {type: string, enum: [general, financial]}
+        wcagVersion: {type: string, enum: ['2.1', '2.2']}
+        level: {type: string, enum: [AA]}
+        schemaVersion: {type: integer}
+        title: {type: string}
+        notice: {type: string}
+        scope: {type: object, additionalProperties: true}
+        methods: {type: object, additionalProperties: true}
+        summary: {type: object, additionalProperties: {type: integer}}
+        criteria: {type: array, items: {$ref: '#/components/schemas/Criterion'}}
+        checks: {type: array, items: {type: object, additionalProperties: true}}
+        reviews: {type: array, items: {$ref: '#/components/schemas/SavedReview'}}
+        financial: {$ref: '#/components/schemas/FinancialAssessment'}
+        vpatRows: {type: array, items: {type: object, additionalProperties: true}}
+        references: {type: array, items: {type: object, additionalProperties: true}}
+        regulatoryNotice: {type: string, nullable: true}
+    FinancialAssessment:
+      type: object
+      nullable: true
+      additionalProperties: true
+      properties:
+        schemaVersion: {type: integer}
+        mode: {type: string, enum: [guided-manual]}
+        notice: {type: string}
+        safetyNotice: {type: string}
+        journeys: {type: array, items: {type: object, additionalProperties: true}}
+        summary: {type: object, additionalProperties: {type: integer}}
+        readiness: {type: object, additionalProperties: true}
+        professionalExperience: {type: string}
+        completionNotice: {type: string}
+    ReviewCommon:
+      type: object
+      required: [kind, targetId, status, reviewer, notes, scope, evidence]
+      properties:
+        kind: {type: string}
+        targetId: {type: string, minLength: 1, maxLength: 200}
+        status: {type: string}
+        reviewer: {type: string, minLength: 1, maxLength: 200}
+        notes: {type: string, minLength: 1, maxLength: 10000}
+        scope: {type: string, minLength: 1, maxLength: 4000}
+        evidence:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items: {type: string, minLength: 1, maxLength: 2000}
+      description: Text must contain non-whitespace content and no forbidden control characters; duplicates in evidence are removed.
+    ReviewRequest:
+      allOf:
+        - {$ref: '#/components/schemas/ReviewCommon'}
+        - oneOf:
+            - type: object
+              properties:
+                kind: {type: string, enum: [criterion, vpat-row]}
+                status: {type: string, enum: [Supports, Partially Supports, Does Not Support, Not Applicable]}
+            - type: object
+              properties:
+                kind: {type: string, enum: [check]}
+                status: {type: string, enum: [pass, fail, not-applicable]}
+            - type: object
+              properties:
+                kind: {type: string, enum: [compliance-item]}
+                status: {type: string, enum: [met, partially-met, not-met, not-applicable]}
+            - type: object
+              required: [execution]
+              properties:
+                kind: {type: string, enum: [financial-step]}
+                status: {type: string, enum: [pass, fail, blocked, not-applicable]}
+                execution: {$ref: '#/components/schemas/FinancialExecution'}
+                findingIds:
+                  type: array
+                  maxItems: 100
+                  items: {type: string, maxLength: 200}
+                  description: IDs from this report; pass/not-applicable cannot link confirmed unresolved findings
+    FinancialExecution:
+      type: object
+      required: [environment, applicationVersion, browser, assistiveTechnology, authorizationRef]
+      properties:
+        environment: {type: string, enum: [sandbox, staging, production-read-only]}
+        applicationVersion: {type: string, minLength: 1, maxLength: 200}
+        browser: {type: string, minLength: 1, maxLength: 300}
+        assistiveTechnology: {type: string, minLength: 1, maxLength: 300}
+        authorizationRef: {type: string, minLength: 1, maxLength: 1000}
+      description: A requiresSandbox step cannot be marked pass/fail in production-read-only.
+    SavedReview:
+      type: object
+      additionalProperties: true
+      description: Saved history; older records may omit newer fields. New submissions follow ReviewRequest.
+      properties:
+        id: {type: string}
+        kind: {type: string}
+        targetId: {type: string}
+        status: {type: string}
+        reviewer: {type: string}
+        notes: {type: string}
+        scope: {type: string}
+        evidence: {type: array, items: {type: string}}
+        at: {type: string, format: date-time}
+        execution: {type: object, additionalProperties: true}
+        findingIds: {type: array, items: {type: string}}
+    VpatProfile:
+      type: object
+      properties:
+        productName: {type: string, maxLength: 200}
+        productVersion: {type: string, maxLength: 100}
+        reportDate: {type: string, maxLength: 10, pattern: '^(\d{4}-\d{2}-\d{2})?$', description: YYYY-MM-DD or empty; backend checks format, not calendar validity}
+        description: {type: string, maxLength: 4000}
+        contact: {type: string, maxLength: 1000}
+        notes: {type: string, maxLength: 4000}
+        evaluationMethods: {type: string, maxLength: 4000}
+    EvidenceSection:
+      type: object
+      required: [uniqueScreenshots, items, withoutEvidence]
+      properties:
+        uniqueScreenshots: {type: integer}
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              evidence: {type: string}
+              evidenceUrl: {type: string, nullable: true}
+              evidenceKind: {type: string}
+              issueCount: {type: integer}
+              issueIds: {type: array, items: {type: string}}
+              findings: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+        withoutEvidence: {type: array, items: {$ref: '#/components/schemas/Finding'}}
+    AssistiveTechnologySection:
+      type: object
+      required: [metadata, runs, summary, states]
+      properties:
+        metadata: {type: object, nullable: true, additionalProperties: true}
+        runs:
+          type: object
+          additionalProperties: true
+          properties:
+            NVDA: {$ref: '#/components/schemas/NvdaRun'}
+        summary:
+          type: object
+          properties:
+            statesInspected: {type: integer}
+            warnings: {type: integer}
+            nvdaStatus: {type: string}
+            nvdaAnnouncementsCaptured: {type: integer}
+        states:
+          type: array
+          description: Browser accessibility-tree snapshots; distinct from actual NVDA run states
+          items: {type: object, additionalProperties: true}
+    NvdaRun:
+      type: object
+      additionalProperties: true
+      description: Run fields vary with version and whether startup or execution was blocked.
+      properties:
+        status: {type: string}
+        outcome: {type: string, nullable: true}
+        actualExecution: {type: boolean}
+        executionMode: {type: string}
+        version: {type: string, nullable: true}
+        reason: {type: string, nullable: true}
+        coverage: {type: object, additionalProperties: true}
+        states: {type: array, items: {type: object, additionalProperties: true}}
+        pages: {type: array, items: {type: object, additionalProperties: true}, description: Legacy run representation}
+        limitations: {type: array, items: {type: string}}
+    Comparison:
+      type: object
+      properties:
+        domain: {type: string}
+        current: {type: object, properties: {id: {type: string}, completedAt: {type: string}}}
+        previous: {type: object, properties: {id: {type: string}, completedAt: {type: string}}}
+        graphs:
+          type: object
+          properties:
+            current: {$ref: '#/components/schemas/Graph'}
+            previous: {$ref: '#/components/schemas/Graph'}
+        counts: {type: object, properties: {new: {type: integer}, fixed: {type: integer}, unresolved: {type: integer}}}
+        excludedForCoverage: {type: integer}
+        excludedForReview: {type: integer}
+        groups:
+          type: object
+          properties:
+            new: {type: array, items: {type: object, additionalProperties: true}}
+            fixed: {type: array, items: {type: object, additionalProperties: true}}
+            unresolved: {type: array, items: {type: object, additionalProperties: true}}
+    BacklogStatus:
+      type: string
+      enum: [open, in-progress, fixed, verified, reopened, wont-fix, false-positive]
+    BacklogUpdate:
+      type: object
+      properties:
+        status: {$ref: '#/components/schemas/BacklogStatus'}
+        owner: {type: string, maxLength: 200}
+        dueDate: {type: string, maxLength: 10, pattern: '^(\d{4}-\d{2}-\d{2})?$'}
+        notes: {type: string, maxLength: 4000}
+        note: {type: string, maxLength: 1000, description: Reason attached to a status-change history entry}
+    BacklogItem:
+      type: object
+      additionalProperties: true
+      properties:
+        key: {type: string}
+        ruleId: {type: string}
+        help: {type: string}
+        impact: {type: string}
+        wcag: {type: array, items: {type: string}}
+        category: {type: string}
+        pageUrl: {type: string}
+        documentUrl: {type: string, nullable: true}
+        target: {type: string}
+        status: {$ref: '#/components/schemas/BacklogStatus'}
+        owner: {type: string}
+        notes: {type: string}
+        dueDate: {type: string}
+        latestScan: {type: string, enum: [present, not-found, not-covered]}
+        latestScanReportId: {type: string}
+        firstSeen: {type: object, additionalProperties: true}
+        lastSeen: {type: object, additionalProperties: true}
+        history: {type: array, items: {type: object, additionalProperties: true}}
+    Backlog:
+      type: object
+      required: [host, items, syncedReports, summary]
+      properties:
+        host: {type: string}
+        items: {type: array, items: {$ref: '#/components/schemas/BacklogItem'}}
+        syncedReports: {type: array, items: {type: string}}
+        summary:
+          type: object
+          properties:
+            total: {type: integer}
+            open: {type: integer}
+            byStatus: {type: object, additionalProperties: {type: integer}}
+            notFoundAwaitingVerification: {type: integer}
+            reopened: {type: integer}
+    BacklogSync:
+      type: object
+      required: [host, added, reopened, notFound, alreadySynced]
+      properties:
+        host: {type: string}
+        added: {type: integer}
+        reopened: {type: integer}
+        notFound: {type: integer}
+        alreadySynced: {type: boolean}
+    JourneyListing:
+      type: object
+      required: [file, valid]
+      properties:
+        file: {type: string}
+        valid: {type: boolean}
+        name: {type: string}
+        environment: {type: string}
+        startUrl: {type: string}
+        steps: {type: integer}
+        error: {type: string, description: Present for invalid definitions}
+    ChecklistItemInput:
+      type: object
+      required: [reference, requirement]
+      properties:
+        reference: {type: string, minLength: 1, maxLength: 120}
+        title: {type: string, maxLength: 160}
+        requirement: {type: string, minLength: 1, maxLength: 2000}
+        category: {type: string, maxLength: 40}
+        wcag:
+          oneOf:
+            - {type: array, items: {type: string}}
+            - {type: string}
+          description: Criterion IDs or comma/semicolon/whitespace separated IDs; invalid IDs are removed
+        verification: {type: string, maxLength: 400}
+        source: {type: string, maxLength: 200}
+    ChecklistImport:
+      type: object
+      required: [id, title]
+      properties:
+        id: {type: string, pattern: '^[a-z0-9][a-z0-9.-]{1,60}$', description: Normalized to lowercase by the server}
+        title: {type: string, minLength: 1, maxLength: 200}
+        publisher: {type: string, maxLength: 200}
+      oneOf:
+        - type: object
+          required: [items]
+          properties:
+            format: {type: string, enum: [json]}
+            items: {type: array, minItems: 1, maxItems: 1000, items: {$ref: '#/components/schemas/ChecklistItemInput'}}
+        - type: object
+          required: [format, csv]
+          properties:
+            format: {type: string, enum: [csv]}
+            csv: {type: string, minLength: 1, description: 'Header row reference,title,requirement; optional category,wcag,verification,source. At most 1000 data rows.'}
+    ComplianceCatalog:
+      type: object
+      properties:
+        notice: {type: string}
+        retrievedOn: {type: string}
+        sources: {type: array, items: {type: object, additionalProperties: true}}
+        sets:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            properties:
+              id: {type: string}
+              title: {type: string}
+              publisher: {type: string}
+              builtIn: {type: boolean}
+              items: {type: integer, description: Item count, not an array}
+    ReportCompliance:
+      type: object
+      properties:
+        notice: {type: string}
+        retrievedOn: {type: string}
+        sources: {type: array, items: {type: object, additionalProperties: true}}
+        sets:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            properties:
+              id: {type: string}
+              title: {type: string}
+              summary: {type: object, additionalProperties: {type: integer}}
+              items:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+                  properties:
+                    id: {type: string}
+                    targetId: {type: string, description: 'Use exactly this setId::itemId in a compliance-item review'}
+                    reference: {type: string}
+                    title: {type: string}
+                    requirement: {type: string}
+                    wcag: {type: array, items: {type: string}}
+                    status: {type: string, enum: [not-reviewed, met, partially-met, not-met, not-applicable]}
+                    review: {type: object, nullable: true, additionalProperties: true}
+                    relatedWcag: {type: array, items: {type: object, additionalProperties: true}}

@@ -82,8 +82,10 @@ test("uses a saved page capture only as labeled context when the other scan has 
   assert.equal(comparison.groups.new[0].previousEvidence.kind, "page-context");
   assert.equal(comparison.groups.new[0].evidence.kind, "highlighted");
   previous.pages[0].actualUrl = `${site}/sign-in`;
-  assert.equal(compareReports(current, previous).groups.new[0].previousEvidence, null,
-    "a screenshot taken after redirect must not be presented as context for the requested page");
+  const redirected = compareReports(current, previous);
+  assert.equal(redirected.counts.new, 0,
+    "a redirected page cannot establish past coverage or supply a screenshot of the requested page");
+  assert.equal(redirected.excludedForCoverage, 1);
 });
 
 test("does not infer a fix from a page that was not crawled or a rule needing review", () => {
@@ -103,4 +105,39 @@ test("requires a distinct older completed report", () => {
   const current = report("current", site, newer);
   assert.throws(() => compareReports(current, current), /different completed scans/);
   assert.throws(() => compareReports(report("old", site, older), current), /older than the current report/);
+  assert.throws(() => compareReports(current, report("invalid", site, "not-a-date")), /older than the current report/);
+});
+
+test("a redirected current page does not prove a historical issue was fixed", () => {
+  const previous = report("previous", site, older, [finding("image-alt", "1.1.1", "img")], { pages: [products] });
+  const current = report("current", site, newer, [], { pages: [products] });
+  current.pages[0].actualUrl = `${site}/login`;
+  const result = compareReports(current, previous);
+  assert.equal(result.counts.fixed, 0);
+  assert.equal(result.excludedForCoverage, 1);
+});
+
+test("coverage and finding identity keep hash routes and origins separate", () => {
+  for (const [first, second] of [
+    [`${site}/#/products`, `${site}/#/orders`],
+    [`${site}/#!/products`, `${site}/#!/orders`],
+    [products, "https://external.example.test/products"],
+    [products, "https://app.example.test:8443/products"]
+  ]) {
+    const previous = report("previous", site, older, [finding("image-alt", "1.1.1", "img", first)], { pages: [first] });
+    const current = report("current", site, newer, [finding("image-alt", "1.1.1", "img", second)], { pages: [second] });
+    const result = compareReports(current, previous);
+    assert.deepEqual(result.counts, { new: 0, fixed: 0, unresolved: 0 });
+    assert.equal(result.excludedForCoverage, 2);
+  }
+});
+
+test("same selector in different embedded frames is not the same unresolved issue", () => {
+  const previous = report("previous", site, older, [{
+    ...finding("image-alt", "1.1.1", "img"), frameUrl: `${site}/old-widget`
+  }], { pages: [products] });
+  const current = report("current", site, newer, [{
+    ...finding("image-alt", "1.1.1", "img"), frameUrl: `${site}/new-widget`
+  }], { pages: [products] });
+  assert.equal(compareReports(current, previous).counts.unresolved, 0);
 });
